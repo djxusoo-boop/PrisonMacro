@@ -1,8 +1,18 @@
-# Manual · PrisonMacro 0.6.0
+# Manual · PrisonMacro 0.6.1
 
 ## Instalar
 
-En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.6.0.apk`. Se instala encima de la versión anterior y conserva tus macros.
+En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.6.1.apk`. Se instala encima de la versión anterior y conserva tus macros.
+
+### Actualizar sin botón APK (desde 0.6.1)
+
+1. En el Mac, abre el Terminal en la carpeta PrisonMacro y ejecuta `bash scripts/serve-updates.sh`. Muestra dos direcciones; déjalo abierto.
+2. En PrisonMacro: ⚙ Ajustes › **⬆ Actualizar la app**. Dirección:
+   - BlueStacks en ese mismo Mac: `10.0.2.2:8765` (ya viene puesta);
+   - otro equipo (el PC con Windows): la segunda dirección que muestra el script, por ejemplo `10.0.0.25:8765`.
+3. **🔎 Buscar actualización** → **⬇ Descargar e instalar** → en el aviso de Android, **Instalar**. La primera vez Android pide permitir que PrisonMacro instale apps: activa el interruptor y vuelve.
+
+Se conservan tus macros. Solo funciona con direcciones de tu red de casa, y Android solo acepta la actualización si está firmada igual que la app instalada. Si el Mac pregunta si Python puede aceptar conexiones entrantes, acepta para que llegue desde el PC.
 
 ## Cómo está organizada la app
 

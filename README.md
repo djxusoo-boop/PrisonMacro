@@ -8,6 +8,10 @@ El archivo para instalar es `outputs/PrisonMacro-0.4.0.apk`. Es una compilación
 
 El rechazo inicial de BlueStacks quedó confirmado en su registro como `INSTALL_FAILED_TEST_ONLY`. No era un ZIP corrupto. La APK publicada está firmada y sin `testOnly`; el puente ADB de BlueStacks Air se desconectó durante esta última instalación, así que allí debe instalarse desde el botón APK.
 
+## Novedades 0.6.1
+
+- **⬆ Actualizar la app por wifi** (⚙ Ajustes): `scripts/serve-updates.sh` publica en `:8765` solo `outputs/update/` (`version.json` + APK); la app compara `versionCode`, descarga, comprueba el SHA-256 y la instala con `PackageInstaller` (Android pide confirmación). Solo acepta direcciones de red local (`Updater.normalizeAddress`). Desde BlueStacks en el mismo Mac: `10.0.2.2:8765`.
+
 ## Novedades 0.6.0
 
 - **■ Parar la macro**: paso nuevo (grupo *Decidir y repetir*) que termina la macro donde esté; pensado para usarlo dentro de «Si se ve…».

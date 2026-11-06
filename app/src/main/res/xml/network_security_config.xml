@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- El actualizador habla con el ordenador de casa por HTTP (sin HTTPS).
+     Updater.kt solo acepta direcciones de la red local; Firebase sigue usando HTTPS. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -22,6 +22,7 @@ import es.macrostudio.core.Studio
 import es.macrostudio.editor.LabActivity
 import es.macrostudio.sync.SyncPhase
 import es.macrostudio.sync.activeSessionCount
+import es.macrostudio.update.Updater
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable private fun SubScreen(title: String, onBack: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
@@ -59,6 +60,7 @@ import es.macrostudio.sync.activeSessionCount
             OutlinedButton(onClick = { c.openFile() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("♻ Restaurar copia o importar una macro") }
             Hint("Al restaurar una copia, las macros que ya tengas con el mismo origen se reemplazan por las de la copia; el resto no se toca. Una macro exportada suelta se añade como nueva.")
         }
+        SettingsCard("⬆ Actualizar la app") { UpdateCard(c) }
         SettingsCard("🔐 Permisos") { PermissionsCard(c, alwaysShow = true) }
         SettingsCard("☁ Más") {
             LinkRow("☁", "Nube", "Sincroniza macros entre tus dispositivos con tu correo") { c.open(Screen.CLOUD) }
@@ -76,6 +78,48 @@ import es.macrostudio.sync.activeSessionCount
         }
         Hint("PrisonMacro ${BuildConfig.VERSION_NAME} · todo se procesa en tu dispositivo; nada sale de él salvo que uses la Nube.")
     }
+}
+
+/** Busca en el ordenador (scripts/serve-updates.sh) una versión más nueva y la instala. */
+@Composable private fun UpdateCard(c: AppController) {
+    val prefs = c.activity.getSharedPreferences("studio", 0)
+    var address by remember { mutableStateOf(prefs.getString("updateAddress", Updater.SAME_COMPUTER) ?: Updater.SAME_COMPUTER) }
+    var message by remember { mutableStateOf("Tienes la versión ${BuildConfig.VERSION_NAME}.") }
+    var found by remember { mutableStateOf<Updater.Info?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val normalized = Updater.normalizeAddress(address)
+    OutlinedTextField(address, { address = it.take(60); found = null }, label = { Text("Dirección del ordenador") }, singleLine = true, isError = normalized == null, modifier = Modifier.fillMaxWidth())
+    Hint(if (normalized == null) "Escribe una dirección de tu red, por ejemplo 192.168.1.20 o 192.168.1.20:8765." else "En BlueStacks del mismo ordenador: ${Updater.SAME_COMPUTER}. En otro equipo: la dirección que muestra el script en el ordenador.")
+    Text(message)
+    val pending = found
+    if (pending == null) Button(onClick = {
+        val target = normalized ?: return@Button
+        prefs.edit().putString("updateAddress", target).apply(); address = target
+        busy = true; message = "Buscando…"
+        Updater.check(target) { info, error ->
+            busy = false
+            when {
+                error != null -> message = error
+                info == null -> message = "Respuesta vacía"
+                Updater.isNewer(info) -> { found = info; message = "Hay una versión nueva: ${info.versionName} (tienes ${BuildConfig.VERSION_NAME})." }
+                else -> message = "Ya tienes la última versión (${BuildConfig.VERSION_NAME})."
+            }
+        }
+    }, enabled = !busy && normalized != null, modifier = Modifier.fillMaxWidth()) { Text("🔎 Buscar actualización") }
+    else Button(onClick = {
+        val pm = c.activity.packageManager
+        if (!pm.canRequestPackageInstalls()) {
+            message = "Permite a PrisonMacro instalar apps (activa el interruptor y vuelve), y pulsa otra vez."
+            c.activity.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:${c.activity.packageName}")))
+            return@Button
+        }
+        busy = true; message = "Descargando ${pending.versionName}…"
+        Updater.downloadAndInstall(c.activity, normalized ?: return@Button, pending, progress = { message = "Descargando ${pending.versionName}… $it %" }) { error ->
+            busy = false
+            message = error ?: "Descargada. Pulsa «Instalar» en el aviso de Android. Tus macros se conservan."
+        }
+    }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("⬇ Descargar e instalar ${pending.versionName}") }
+    Hint("En el ordenador, abre el Terminal en la carpeta PrisonMacro y ejecuta «bash scripts/serve-updates.sh». Déjalo abierto mientras actualizas.")
 }
 
 @Composable fun LogScreen(c: AppController) {

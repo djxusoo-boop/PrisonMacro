@@ -203,6 +203,22 @@ class CoreTest {
         assertTrue(back.needsScreenCapture())
         assertFalse(Project(actions=listOf(Action(kind=Kind.REPEAT,children=listOf(Action())))).needsScreenCapture())
     }
+    @Test fun updaterOnlyAcceptsLocalAddresses() {
+        val u=es.macrostudio.update.Updater
+        assertEquals("10.0.2.2:8765",u.normalizeAddress("10.0.2.2"))
+        assertEquals("192.168.1.20:9000",u.normalizeAddress(" http://192.168.1.20:9000/ "))
+        assertEquals("mac-de-xuso.local:8765",u.normalizeAddress("mac-de-xuso.local"))
+        assertNull(u.normalizeAddress("8.8.8.8")); assertNull(u.normalizeAddress("ejemplo.com"))
+        assertNull(u.normalizeAddress("172.32.0.1")); assertNull(u.normalizeAddress("192.168.1.300"))
+        assertNull(u.normalizeAddress("192.168.1.2:99999")); assertNull(u.normalizeAddress("192.168.1.2/../x"))
+    }
+    @Test fun updaterRejectsUnsafeVersionInfo() {
+        val u=es.macrostudio.update.Updater
+        val ok="""{"versionCode":30,"versionName":"0.7.0","apk":"PrisonMacro-0.7.0.apk","sha256":"${"a".repeat(64)}","sizeBytes":1000}"""
+        assertEquals(30,u.parseInfo(ok).versionCode)
+        assertThrows(IllegalArgumentException::class.java) { u.parseInfo(ok.replace("PrisonMacro-0.7.0.apk","../secreto.apk")) }
+        assertThrows(IllegalArgumentException::class.java) { u.parseInfo(ok.replace("a".repeat(64),"zz")) }
+    }
     @Test fun colorTargetMapsBackToItsStep() {
         assertEquals("abc",stepOfCaptureTarget(Studio.COLOR_PREFIX+"abc"))
         assertEquals("abc",stepOfCaptureTarget("abc"))
