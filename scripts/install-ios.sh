@@ -7,7 +7,8 @@ derived="$root_dir/ios/build/ConnectedDeviceDerivedData"
 device_id="${1:-}"
 
 if [[ -z "$device_id" ]]; then
-  device_id="$(xcrun devicectl list devices | awk '$1 == "iphone" && $4 ~ /^[A-F0-9-]{8,}$/ { print $4; exit }')"
+  # Primer iPhone físico, aunque su nombre tenga espacios (p. ej. «iphone xuso»).
+  device_id="$(xcrun devicectl list devices | grep -E 'iPhone[0-9]+,[0-9]+' | grep -v simulated | grep -oE '[0-9A-F]{8}-[0-9A-F]{16}' | head -1 || true)"
 fi
 
 if [[ -z "$device_id" ]]; then
