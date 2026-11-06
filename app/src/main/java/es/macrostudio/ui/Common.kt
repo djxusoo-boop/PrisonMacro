@@ -74,13 +74,14 @@ fun kindInfo(kind: Kind): KindInfo = when (kind) {
     Kind.CLOSE_ACTIVE -> KindInfo("✖", "Cerrar la app actual", "La quita de Recientes y vuelve a Inicio")
     Kind.NOTIFICATIONS -> KindInfo("🔔", "Abrir notificaciones", "Despliega la barra de notificaciones")
     Kind.QUICK_SETTINGS -> KindInfo("⚙", "Ajustes rápidos", "Despliega los ajustes rápidos")
+    Kind.STOP -> KindInfo("■", "Parar la macro", "Termina la macro aquí. Útil dentro de «Si se ve…»")
 }
 
 /** Grupos del menú «Añadir paso». */
 val kindGroups: List<Pair<String, List<Kind>>> = listOf(
     "Tocar la pantalla" to listOf(Kind.GESTURE, Kind.CLICK_IMAGE),
     "Esperar" to listOf(Kind.WAIT, Kind.WAIT_IMAGE),
-    "Decidir y repetir" to listOf(Kind.IF_IMAGE, Kind.IF_COLOR, Kind.REPEAT),
+    "Decidir y repetir" to listOf(Kind.IF_IMAGE, Kind.IF_COLOR, Kind.REPEAT, Kind.STOP),
     "Android y apps" to listOf(Kind.OPEN_APP, Kind.CLOSE_ACTIVE, Kind.BACK, Kind.HOME, Kind.RECENTS, Kind.NOTIFICATIONS, Kind.QUICK_SETTINGS)
 )
 
@@ -129,7 +130,7 @@ fun actionSummary(a: Action, p: Project): String {
         Kind.IF_IMAGE -> image?.let { "Si se ve «${it.name}»" } ?: "⚠ Falta elegir la imagen"
         Kind.IF_COLOR -> "Si se ve ${rgbHex(a.targetColor)} (tolerancia ${a.colorTolerance})"
         Kind.WAIT -> readableDuration(a.durationMs)
-        Kind.REPEAT -> "${a.count} veces · ${a.children.size} paso(s) dentro"
+        Kind.REPEAT -> (image?.let { "Hasta ver «${it.name}» (máx. ${a.count} veces)" } ?: "${a.count} veces") + " · ${a.children.size} paso(s) dentro"
         Kind.OPEN_APP -> a.packageName
         else -> kindInfo(a.kind).hint
     }

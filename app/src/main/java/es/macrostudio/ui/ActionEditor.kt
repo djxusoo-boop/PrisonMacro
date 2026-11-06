@@ -54,6 +54,8 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
     var swipe by remember(a.id, a.points) { mutableStateOf(a.points.size == 2) }
     var x2 by remember(a.id, a.points) { mutableStateOf(pctText(a.points.getOrNull(1)?.x ?: .5f)) }
     var y2 by remember(a.id, a.points) { mutableStateOf(pctText(a.points.getOrNull(1)?.y ?: .2f)) }
+    // Repetir: un número fijo de veces o hasta que se vea una imagen.
+    var untilImage by remember(a.id) { mutableStateOf(a.kind == Kind.REPEAT && a.templateId.isNotEmpty()) }
     var picking by remember { mutableStateOf(false) }
     var choosingApp by remember { mutableStateOf(false) }
 
@@ -82,7 +84,7 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
     val waitMs = parseSeconds(waitSec)?.takeIf { it in 1000..3_600_000 }
     val validWait = a.kind != Kind.CLICK_IMAGE || waitMs != null
     val validPackage = a.kind != Kind.OPEN_APP || packageName.matches(packageRegex)
-    val needsImage = a.kind in imageKinds
+    val needsImage = a.kind in imageKinds || (a.kind == Kind.REPEAT && untilImage)
     val problems = buildList {
         if (name.isBlank()) add("Escribe un nombre")
         if (!validDuration) add(if (durationInSeconds) "Revisa el tiempo" else "Revisa la duración")
@@ -101,7 +103,7 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
         if (!lenient && problems.isNotEmpty()) return null
         return a.copy(
             name = name.trim().ifBlank { a.name }, description = description.trim(),
-            templateId = templateId,
+            templateId = if (a.kind == Kind.REPEAT && !untilImage) "" else templateId,
             durationMs = if (validDuration) d!! else a.durationMs,
             count = cnt ?: a.count,
             points = when {
@@ -137,15 +139,16 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
                     Hint(info.hint)
                     OutlinedTextField(name, { name = it.take(100) }, label = { Text("Nombre del paso") }, singleLine = true, modifier = Modifier.fillMaxWidth())
 
-                    if (needsImage) ImageSection(
+                    val imageSection: @Composable () -> Unit = { ImageSection(
                         c, templateId,
-                        title = when (a.kind) { Kind.CLICK_IMAGE -> "Imagen que hay que tocar"; Kind.WAIT_IMAGE -> "Imagen que hay que esperar"; else -> "Imagen que hay que comprobar" },
+                        title = when (a.kind) { Kind.CLICK_IMAGE -> "Imagen que hay que tocar"; Kind.WAIT_IMAGE -> "Imagen que hay que esperar"; Kind.REPEAT -> "Repetir hasta que se vea esta imagen"; else -> "Imagen que hay que comprobar" },
                         onPick = { picking = true },
                         onCapture = { leaveAnd { c.captureFor(a.id) } },
                         onGallery = { leaveAnd { c.importImageFor(a.id) } },
                         onRecrop = { id -> leaveAnd { c.recropImage(id, a.id) } },
                         onTest = { id -> leaveAnd { c.testImage(id) } }
-                    )
+                    ) }
+                    if (needsImage && a.kind != Kind.REPEAT) imageSection()
 
                     when (a.kind) {
                         Kind.CLICK_IMAGE -> {
@@ -181,8 +184,10 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
                         }
                         Kind.IF_IMAGE, Kind.IF_COLOR -> Hint("Después de guardar, añade pasos en «✔ Si se ve» y «✖ Si NO se ve» directamente en la lista.")
                         Kind.REPEAT -> {
-                            OutlinedTextField(count, { count = it.filter(Char::isDigit).take(3) }, label = { Text("Cuántas veces (1–100)") }, singleLine = true)
-                            Hint("Después de guardar, añade los pasos que se repiten dentro de este bloque en la lista.")
+                            ChoiceChips(listOf(false to "Un número de veces", true to "Hasta ver una imagen"), untilImage) { untilImage = it }
+                            if (untilImage) imageSection()
+                            OutlinedTextField(count, { count = it.filter(Char::isDigit).take(3) }, label = { Text(if (untilImage) "Como máximo (1–100 veces)" else "Cuántas veces (1–100)") }, singleLine = true)
+                            Hint(if (untilImage) "Antes de cada vuelta mira la pantalla: si ya se ve la imagen, sale del bloque y sigue. Si llega al máximo sin verla, también sigue." else "Después de guardar, añade los pasos que se repiten dentro de este bloque en la lista.")
                         }
                         Kind.WAIT -> SecondsField("Tiempo de espera (segundos)", duration, listOf("0,5", "1", "2", "5", "10")) { duration = it }
                         Kind.GESTURE -> {

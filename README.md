@@ -8,6 +8,12 @@ El archivo para instalar es `outputs/PrisonMacro-0.4.0.apk`. Es una compilación
 
 El rechazo inicial de BlueStacks quedó confirmado en su registro como `INSTALL_FAILED_TEST_ONLY`. No era un ZIP corrupto. La APK publicada está firmada y sin `testOnly`; el puente ADB de BlueStacks Air se desconectó durante esta última instalación, así que allí debe instalarse desde el botón APK.
 
+## Novedades 0.6.0
+
+- **■ Parar la macro**: paso nuevo (grupo *Decidir y repetir*) que termina la macro donde esté; pensado para usarlo dentro de «Si se ve…».
+- **🔁 Repetir hasta ver una imagen**: un bloque Repetir puede llevar imagen (`templateId`); antes de cada vuelta comprueba si se ve y, si es así, sale. `count` pasa a ser el máximo de vueltas.
+- iPhone: ambos se pueden crear y editar; el iPhone ya edita también los pasos de dentro de un Repetir. `STOP` es un tipo nuevo: versiones anteriores de las apps no abren macros que lo usen.
+
 ## Novedades 0.5.1
 
 - **Arreglado:** las macros con pasos no se podían pasar entre Android y iPhone: Android guarda cada punto como `[x, y]` y el iPhone como `{"x","y"}`. Ahora los dos aceptan ambos y el iPhone guarda como Android. Hay una prueba con un JSON generado por el código real del iPhone (`app/src/test/resources/ios-export.json`).

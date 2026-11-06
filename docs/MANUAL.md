@@ -1,8 +1,8 @@
-# Manual · PrisonMacro 0.5.1
+# Manual · PrisonMacro 0.6.0
 
 ## Instalar
 
-En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.5.1.apk`. Se instala encima de la versión anterior y conserva tus macros.
+En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.6.0.apk`. Se instala encima de la versión anterior y conserva tus macros.
 
 ## Cómo está organizada la app
 
@@ -69,6 +69,10 @@ En **Buscar imagen y tocarla** eliges dónde tocar (en el centro, desplazado o e
 **Si la imagen no aparece**: en **Buscar imagen y tocarla** eliges cuántos segundos buscarla y qué hacer si no sale: **■ Parar la macro** o **⏭ Saltar este paso y seguir** (útil para ventanas que salen solo a veces). **Esperar a ver una imagen** tiene la misma opción.
 
 **Colores**: en **🎨 Si se ve un color…** pulsa **🎯 Elegir el color tocándolo en una captura**. Vas al juego, pulsas 📷 Capturar y tocas el punto: se guardan su color exacto y su posición, sin escribir códigos.
+
+**Repetir hasta ver una imagen**: en **🔁 Repetir pasos** elige **Hasta ver una imagen** y captúrala o elige una de tus imágenes. Antes de cada vuelta mira la pantalla: si ya se ve, sale del bloque y sigue con lo de después. Pones un máximo de vueltas (1–100) por si nunca aparece.
+
+**■ Parar la macro**: termina la macro en ese punto. Úsalo dentro de **Si se ve una imagen…**; por ejemplo, «si se ve la pantalla de derrota → ■ Parar».
 
 En **Si se ve una imagen…** y **Si se ve un color…** la lista muestra las dos ramas, **✔ Si se ve** y **✖ Si NO se ve**, cada una con su **＋ Añadir paso aquí**. Igual con **🔁 Repetir pasos**.
 

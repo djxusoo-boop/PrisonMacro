@@ -2,7 +2,7 @@ package es.macrostudio.core
 
 import java.util.UUID
 
-enum class Kind { GESTURE, WAIT, WAIT_IMAGE, REPEAT, CLICK_IMAGE, IF_IMAGE, IF_COLOR, HOME, BACK, RECENTS, CLOSE_ACTIVE, NOTIFICATIONS, QUICK_SETTINGS, OPEN_APP }
+enum class Kind { GESTURE, WAIT, WAIT_IMAGE, REPEAT, CLICK_IMAGE, IF_IMAGE, IF_COLOR, HOME, BACK, RECENTS, CLOSE_ACTIVE, NOTIFICATIONS, QUICK_SETTINGS, OPEN_APP, STOP }
 enum class SearchMode { EXACT, ANYWHERE }
 enum class ClickTarget { CENTER, OFFSET, FIXED }
 enum class ClickStyle { SINGLE, DOUBLE, LONG }
@@ -163,7 +163,7 @@ fun countActions(items: List<Action>): Int = items.sumOf { 1+countActions(it.chi
 
 /** Pasos que necesitan la captura de pantalla autorizada para funcionar. */
 fun Project.needsScreenCapture(): Boolean {
-    fun scan(items: List<Action>): Boolean = items.any { (it.enabled && it.kind in setOf(Kind.IF_IMAGE,Kind.CLICK_IMAGE,Kind.WAIT_IMAGE,Kind.IF_COLOR)) || scan(it.children) || scan(it.otherwise) }
+    fun scan(items: List<Action>): Boolean = items.any { (it.enabled && (it.kind in setOf(Kind.IF_IMAGE,Kind.CLICK_IMAGE,Kind.WAIT_IMAGE,Kind.IF_COLOR) || (it.kind==Kind.REPEAT && it.templateId.isNotEmpty()))) || scan(it.children) || scan(it.otherwise) }
     return startOnImage || scan(actions)
 }
 

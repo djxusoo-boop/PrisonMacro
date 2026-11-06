@@ -195,7 +195,7 @@ fun Modifier.clip8() = clip(RoundedCornerShape(8.dp))
                 val summary = actionSummary(a, p)
                 Text(summary, style = MaterialTheme.typography.bodySmall, color = if (summary.startsWith("⚠")) Warning else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            if (a.kind in imageKinds) TemplateThumb(image, Modifier.size(56.dp, 40.dp))
+            if (a.kind in imageKinds || a.templateId.isNotBlank()) TemplateThumb(image, Modifier.size(56.dp, 40.dp))
             if (a.kind == Kind.IF_COLOR) Box(Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).background(Color(a.targetColor)))
             StepMenu(c, a, busy, onAdd)
         }
@@ -236,7 +236,7 @@ fun Modifier.clip8() = clip(RoundedCornerShape(8.dp))
         DropdownMenu(open, { open = false }) {
             DropdownMenuItem(text = { Text("✏️  Editar") }, onClick = { open = false; c.editAction(a.id) })
             DropdownMenuItem(text = { Text("▶  Probar este paso") }, onClick = { open = false; c.testStep(a) })
-            if (a.kind in imageKinds && a.templateId.isNotBlank()) DropdownMenuItem(text = { Text("👁  ¿Se ve la imagen ahora?") }, onClick = { open = false; c.testImage(a.templateId) })
+            if (a.templateId.isNotBlank()) DropdownMenuItem(text = { Text("👁  ¿Se ve la imagen ahora?") }, onClick = { open = false; c.testImage(a.templateId) })
             HorizontalDivider()
             DropdownMenuItem(text = { Text("⬆  Subir") }, onClick = { open = false; change(moveAction(Studio.project.actions, a.id, -1)) })
             DropdownMenuItem(text = { Text("⬇  Bajar") }, onClick = { open = false; change(moveAction(Studio.project.actions, a.id, 1)) })

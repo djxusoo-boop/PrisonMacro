@@ -106,7 +106,17 @@ object Engine {
                         later(token) { if(success) finish() else stop("Android canceló o rechazó el gesto") }
                     }
                 }
-                Kind.REPEAT -> { fun repeat(i: Int) { if(i>=a.count) finish() else sequence(a.children,token,p,simulation) { repeat(i+1) } }; repeat(0) }
+                Kind.REPEAT -> {
+                    // Con imagen elegida: repite hasta que se vea (como máximo [count] veces).
+                    val until=p.templates.firstOrNull { it.id==a.templateId }?.template
+                    fun repeat(i: Int) {
+                        if(i>=a.count) { finish(); return }
+                        if(until==null || simulation) sequence(a.children,token,p,simulation) { repeat(i+1) }
+                        else detect(p,until) { found -> later(token) { if(found) finish() else sequence(a.children,token,p,simulation) { repeat(i+1) } } }
+                    }
+                    repeat(0)
+                }
+                Kind.STOP -> stop("Completado: parada en «${a.name}»")
                 Kind.CLICK_IMAGE -> if(simulation) later(token,a.durationMs,finish) else clickImage(a,token,p,finish)
                 Kind.IF_IMAGE -> {
                     // Una condición siempre usa su captura elegida. No debe heredar en

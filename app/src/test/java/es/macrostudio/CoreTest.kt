@@ -194,6 +194,15 @@ class CoreTest {
         assertEquals(2,p.actions[2].points.size); assertEquals(0.8f,p.actions[2].points[1].x,0.0001f)
         assertFalse(p.actions[3].skipIfMissing)
     }
+    @Test fun stopStepAndRepeatUntilImageRoundTrip() {
+        val img=SavedTemplate("t1","Victoria",Template("a.png",0,0,10,10,100,100))
+        val p=Project(templates=listOf(img),actions=listOf(Action(kind=Kind.REPEAT,templateId="t1",count=50,children=listOf(Action())),Action(kind=Kind.STOP,name="Parar")))
+        assertNull(p.validate())
+        val back=es.macrostudio.projects.ProjectStore.decode(es.macrostudio.projects.ProjectStore.encode(p))
+        assertEquals(Kind.STOP,back.actions[1].kind); assertEquals("t1",back.actions[0].templateId)
+        assertTrue(back.needsScreenCapture())
+        assertFalse(Project(actions=listOf(Action(kind=Kind.REPEAT,children=listOf(Action())))).needsScreenCapture())
+    }
     @Test fun colorTargetMapsBackToItsStep() {
         assertEquals("abc",stepOfCaptureTarget(Studio.COLOR_PREFIX+"abc"))
         assertEquals("abc",stepOfCaptureTarget("abc"))

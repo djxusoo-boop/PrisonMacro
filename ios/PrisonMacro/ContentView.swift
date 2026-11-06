@@ -483,7 +483,17 @@ private struct ActionEditorCard: View {
         case .WAIT, .WAIT_IMAGE, .CLOSE_ACTIVE:
             SecondsField(title: action.kind == .WAIT_IMAGE ? "Esperar la imagen como máximo (s)" : action.kind == .WAIT ? "Esperar (s)" : "Pausa para mostrar Recientes (s)", value: $action.durationMs, minimum: action.kind == .WAIT_IMAGE ? 1_000 : action.kind == .WAIT ? 1 : 500, maximum: action.kind == .WAIT || action.kind == .WAIT_IMAGE ? 600_000 : 3_000)
         case .REPEAT:
-            IntegerField(title: "Repeticiones", value: Binding(get: { Int64(action.count) }, set: { action.count = Int($0) }), minimum: 1, maximum: 100)
+            Picker("Repetir", selection: $action.templateId) {
+                Text("Un número de veces").tag("")
+                ForEach(templates) { saved in Text("Hasta ver «\(saved.name)»").tag(saved.id) }
+            }.pickerStyle(.menu)
+            IntegerField(title: action.templateId.isEmpty ? "Cuántas veces (1–100)" : "Como máximo (1–100 veces)", value: Binding(get: { Int64(action.count) }, set: { action.count = Int($0) }), minimum: 1, maximum: 100)
+            if !action.templateId.isEmpty {
+                Text("Antes de cada vuelta mira la pantalla: si ya se ve la imagen, sale del bloque y sigue.").font(.footnote).foregroundStyle(.secondary)
+            }
+            BranchEditor(title: "PASOS QUE SE REPITEN", actions: $action.children, templates: templates, images: images)
+        case .STOP:
+            Text("Termina la macro en este punto. Úsalo dentro de «SI SE VE…», por ejemplo para parar si aparece la pantalla de derrota.").font(.footnote).foregroundStyle(.secondary)
         case .GESTURE: GestureEditor(action: $action)
         case .OPEN_APP:
             TextField("Paquete de la aplicación", text: $action.packageName).textFieldStyle(.roundedBorder)
@@ -658,7 +668,14 @@ private struct BranchActionRow: View {
             if action.kind == .IF_IMAGE || action.kind == .CLICK_IMAGE || action.kind == .WAIT_IMAGE { ImageActionEditor(action: $action, templates: templates, images: images) }
             else if action.kind == .GESTURE { GestureEditor(action: $action) }
             else if action.kind == .WAIT || action.kind == .WAIT_IMAGE || action.kind == .CLOSE_ACTIVE { SecondsField(title: action.kind == .WAIT_IMAGE ? "Esperar la imagen como máximo (s)" : action.kind == .WAIT ? "Esperar (s)" : "Pausa para mostrar Recientes (s)", value: $action.durationMs, minimum: action.kind == .WAIT_IMAGE ? 1_000 : action.kind == .WAIT ? 1 : 500, maximum: action.kind == .WAIT || action.kind == .WAIT_IMAGE ? 600_000 : 3_000) }
-            else if action.kind == .REPEAT { IntegerField(title: "Repeticiones", value: Binding(get: { Int64(action.count) }, set: { action.count = Int($0) }), minimum: 1, maximum: 100) }
+            else if action.kind == .REPEAT {
+                Picker("Repetir", selection: $action.templateId) {
+                    Text("Un número de veces").tag("")
+                    ForEach(templates) { saved in Text("Hasta ver «\(saved.name)»").tag(saved.id) }
+                }.pickerStyle(.menu)
+                IntegerField(title: action.templateId.isEmpty ? "Cuántas veces (1–100)" : "Como máximo (1–100 veces)", value: Binding(get: { Int64(action.count) }, set: { action.count = Int($0) }), minimum: 1, maximum: 100)
+            }
+            else if action.kind == .STOP { Text("Termina la macro aquí.").font(.caption).foregroundStyle(.secondary) }
             else if action.kind == .OPEN_APP { TextField("Paquete", text: $action.packageName).textFieldStyle(.roundedBorder) }
             else if action.kind == .IF_COLOR { ColorActionEditor(action: $action) }
             if action.kind == .IF_IMAGE || action.kind == .IF_COLOR {
@@ -820,6 +837,7 @@ private func kindLabel(_ kind: MacroKind) -> String {
     case .NOTIFICATIONS: return "Desplegar notificaciones"
     case .QUICK_SETTINGS: return "Desplegar ajustes rápidos"
     case .OPEN_APP: return "Abrir aplicación"
+    case .STOP: return "Parar la macro"
     }
 }
 
@@ -836,6 +854,7 @@ private func kindLabel(_ kind: MacroKind) -> String {
         Button(kindLabel(.WAIT)) { onChoose(.WAIT) }
         Button(kindLabel(.WAIT_IMAGE)) { onChoose(.WAIT_IMAGE) }
         Button(kindLabel(.REPEAT)) { onChoose(.REPEAT) }
+        Button(kindLabel(.STOP)) { onChoose(.STOP) }
     }
     Section("Dispositivo y aplicación") {
         ForEach([MacroKind.OPEN_APP, .BACK, .HOME, .RECENTS, .CLOSE_ACTIVE, .NOTIFICATIONS, .QUICK_SETTINGS], id: \.self) { kind in
@@ -869,7 +888,8 @@ private func readableActionSummary(_ action: MacroAction) -> String {
     case .CLICK_IMAGE: return "toca la imagen" + (action.waitMs > 0 ? " (busca \(readableDuration(action.waitMs)))" : "") + (action.skipIfMissing ? " · si no está, sigue" : "")
     case .IF_IMAGE: return "comprobar imagen"
     case .IF_COLOR: return "comprobar color"
-    case .REPEAT: return "repetir \(action.count) veces"
+    case .REPEAT: return action.templateId.isEmpty ? "repetir \(action.count) veces" : "repetir hasta ver la imagen (máx. \(action.count))"
+    case .STOP: return "termina la macro"
     case .HOME: return "ir al inicio"
     case .BACK: return "volver"
     case .RECENTS: return "abrir recientes"
