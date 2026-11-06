@@ -52,46 +52,112 @@ class MacroAccessibilityService: AccessibilityService() {
     }
     fun screenSize(): Pair<Int,Int> { val m=android.util.DisplayMetrics(); @Suppress("DEPRECATION") wm.defaultDisplay.getRealMetrics(m); return Pair(m.widthPixels,m.heightPixels) }
     private fun params(width: Int,height: Int)=WindowManager.LayoutParams(width,height,WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply { gravity=Gravity.TOP or Gravity.LEFT; if(android.os.Build.VERSION.SDK_INT>=28) layoutInDisplayCutoutMode=WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES }
-    fun showBar() {
-        if(bar!=null) { refreshBar(); return }
-        val row=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; setBackgroundColor(Color.rgb(26,31,45)); setPadding(dp(3),dp(3),dp(3),dp(3)) }
-        bar=row
-        fun button(label: String, block: ()->Unit) { row.addView(Button(this).apply { text=label; isAllCaps=false; textSize=11f; minimumWidth=0; setPadding(dp(5),0,dp(5),0); contentDescription=label; setOnClickListener { block(); refreshBar() } },LinearLayout.LayoutParams(dp(62),dp(48))) }
-        button("Captura") { if(!Studio.recording && !Studio.running) capture() }
-        button("Grabar") { if(Studio.recording) stopRecording() else if(!Studio.running) startRecording() }
-        button("Pausa") { if(Studio.running) Engine.pause() }
-        button("PARAR") { stopRecording(); stopPointPicker(); Engine.stop("Parada de emergencia") }
-        button("Editor") { stopRecording(); stopPointPicker(); Engine.stop(); startActivity(Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)); hideBar() }
-        try { wm.addView(row,params(WindowManager.LayoutParams.WRAP_CONTENT,dp(54)).apply { y=dp(30) }) } catch(e: Exception) { bar=null; Studio.fail("No se pudo mostrar el panel: ${e.message}") }
+    /** Modo del panel flotante. */
+    enum class BarMode { CONTROL, CAPTURE }
+    private var barMode=BarMode.CONTROL
+    private var barX=0; private var barY=-1
+
+    /** Panel de control: ▶/Ⅱ, ■, grabar, capturar y volver a la app. */
+    fun showBar() { barMode=BarMode.CONTROL; ensureBar() }
+
+    /** Panel reducido para capturar la pantalla de otra app. La imagen se
+     * asignará a [actionId] (o a la imagen de inicio, o solo a la biblioteca). */
+    fun startCaptureMode(actionId: String?) {
+        if(Studio.running) { Studio.fail("Detén la macro antes de capturar"); return }
+        stopRecording()
+        Studio.pendingTemplateActionId=actionId
+        barMode=BarMode.CAPTURE
+        ensureBar()
+        Toast.makeText(this,"Ve a la pantalla que quieras y pulsa 📷 Capturar",Toast.LENGTH_LONG).show()
+    }
+
+    private fun ensureBar() {
+        if(bar==null) {
+            val row=LinearLayout(this).apply {
+                orientation=LinearLayout.HORIZONTAL
+                gravity=Gravity.CENTER_VERTICAL
+                background=android.graphics.drawable.GradientDrawable().apply { setColor(Color.argb(235,23,31,48)); cornerRadius=dp(14).toFloat(); setStroke(dp(1),Color.rgb(109,226,209)) }
+                setPadding(dp(4),dp(4),dp(4),dp(4))
+            }
+            bar=row
+            if(barY<0) barY=dp(30)
+            try { wm.addView(row,params(WindowManager.LayoutParams.WRAP_CONTENT,WindowManager.LayoutParams.WRAP_CONTENT).apply { x=barX; y=barY }) }
+            catch(e: Exception) { bar=null; Studio.fail("No se pudo mostrar el panel: ${e.message}"); return }
+        }
         refreshBar()
     }
+
     fun refreshBar() {
-        (bar?.getChildAt(1) as? Button)?.text=if(Studio.recording) "FIN REC" else "Grabar"
-        (bar?.getChildAt(1) as? Button)?.contentDescription=if(Studio.recording) "Finalizar grabación" else "Grabar gestos"
-        (bar?.getChildAt(2) as? Button)?.apply {
-            isEnabled=Studio.running
-            text=when {
-                Studio.paused -> "▶ Seguir"
-                Studio.running -> "Ⅱ Pausa"
-                else -> "Pausa"
+        if(Looper.myLooper()!=Looper.getMainLooper()) { main.post { refreshBar() }; return }
+        val row=bar ?: return
+        row.removeAllViews()
+        row.addView(dragHandle(row))
+        fun button(label: String, description: String, color: Int=Color.rgb(44,56,80), enabled: Boolean=true, widthDp: Int=52, block: ()->Unit) {
+            row.addView(Button(this).apply {
+                text=label; isAllCaps=false; textSize=15f; minimumWidth=0; minWidth=0; minimumHeight=0; minHeight=0
+                setPadding(dp(4),0,dp(4),0); contentDescription=description; isEnabled=enabled; alpha=if(enabled) 1f else .4f
+                setTextColor(Color.WHITE)
+                background=android.graphics.drawable.GradientDrawable().apply { setColor(color); cornerRadius=dp(10).toFloat() }
+                setOnClickListener { block(); refreshBar() }
+            },LinearLayout.LayoutParams(dp(widthDp),dp(44)).apply { setMargins(dp(2),0,dp(2),0) })
+        }
+        when {
+            barMode==BarMode.CAPTURE -> {
+                button("📷 Capturar","Capturar pantalla",Color.rgb(20,120,110),widthDp=118) { capture() }
+                button("✕","Cancelar captura") { Studio.pendingTemplateActionId?.let { if(it!=Studio.START_IMAGE_TARGET) Studio.reopenActionId=it }; Studio.pendingTemplateActionId=null; openApp() }
             }
-            contentDescription=when {
-                Studio.paused -> "Seguir macro"
-                Studio.running -> "Pausar macro"
-                else -> "Pausa no disponible: no hay una macro ejecutándose"
+            Studio.recording -> {
+                button("■ Terminar grabación","Terminar grabación",Color.rgb(170,40,60),widthDp=170) { stopRecording(); Studio.requestedScreen="editor"; openApp() }
+            }
+            else -> {
+                val running=Studio.running
+                button(if(!running || Studio.paused) "▶" else "Ⅱ",if(!running) "Reproducir ${Studio.project.name}" else if(Studio.paused) "Seguir" else "Pausa",Color.rgb(20,120,110)) {
+                    if(!running) Engine.start(Studio.project.startOnImage) else Engine.pause()
+                }
+                button("■","Parar",Color.rgb(150,40,55),enabled=running) { Engine.stop("Parada manual") }
+                button("●","Grabar gestos",enabled=!running) { startRecording() }
+                button("📷","Capturar imagen",enabled=!running) { barMode=BarMode.CAPTURE; Studio.pendingTemplateActionId=null; capture() }
+                button("⌂","Abrir PrisonMacro") { stopPointPicker(); Engine.stop(); openApp() }
+                button("✕","Ocultar panel") { hideBar() }
             }
         }
     }
-    fun hideBar() { bar?.let { runCatching { wm.removeView(it) } }; bar=null }
+
+    private fun dragHandle(row: LinearLayout): View = TextView(this).apply {
+        text="⠿"; textSize=20f; setTextColor(Color.rgb(160,180,200)); gravity=Gravity.CENTER; contentDescription="Mover panel"
+        var startX=0f; var startY=0f; var originX=0; var originY=0
+        setOnTouchListener { _, e ->
+            when(e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { startX=e.rawX; startY=e.rawY; originX=barX; originY=barY }
+                MotionEvent.ACTION_MOVE -> {
+                    barX=(originX+(e.rawX-startX)).toInt().coerceAtLeast(0); barY=(originY+(e.rawY-startY)).toInt().coerceAtLeast(0)
+                    runCatching { wm.updateViewLayout(row,(row.layoutParams as WindowManager.LayoutParams).apply { x=barX; y=barY }) }
+                }
+            }
+            true
+        }
+        layoutParams=LinearLayout.LayoutParams(dp(26),dp(44))
+    }
+
+    private fun openApp() {
+        hideBar()
+        startActivity(Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+    }
+
+    fun hideBar() { bar?.let { runCatching { wm.removeView(it) } }; bar=null; barMode=BarMode.CONTROL }
+
     private fun capture() {
-        val service=CaptureService.instance ?: return Studio.fail("Autoriza la captura desde el editor")
+        val service=CaptureService.instance ?: run {
+            Studio.fail("Falta autorizar la captura de pantalla"); Toast.makeText(this,"Primero autoriza la captura de pantalla desde PrisonMacro",Toast.LENGTH_LONG).show(); openApp(); return
+        }
         bar?.visibility=View.INVISIBLE
         main.postDelayed({ service.saveScreenshot { success ->
             bar?.visibility=View.VISIBLE
             if(success) {
+                val target=Studio.pendingTemplateActionId
                 hideBar()
                 startActivity(Intent(this,CropActivity::class.java)
-                    .putExtra("actionId",Studio.pendingTemplateActionId)
+                    .putExtra("actionId",target)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         } },450)
@@ -99,7 +165,7 @@ class MacroAccessibilityService: AccessibilityService() {
     fun perform(action: Action, done: (Boolean)->Unit) = dispatchAction(action,true,done)
     private fun dispatchAction(action: Action, checkTemplateResolution: Boolean, done: (Boolean)->Unit) {
         val (w,h)=screenSize()
-        val template=Studio.project.template
+        val template=Studio.project.template.takeIf { Studio.project.startOnImage }
         if(checkTemplateResolution && template!=null && (w!=template.screenWidth || h!=template.screenHeight)) { Studio.log("Resolución distinta a la plantilla; gesto bloqueado"); done(false); return }
         try {
             val path=Path(); action.points.forEachIndexed { index,p -> val x=(p.x*(w-1)).coerceIn(0f,(w-1).toFloat()); val y=(p.y*(h-1)).coerceIn(0f,(h-1).toFloat()); if(index==0) path.moveTo(x,y) else path.lineTo(x,y) }
@@ -255,6 +321,7 @@ class MacroAccessibilityService: AccessibilityService() {
                     Studio.status="Punto guardado: $percent"
                     Studio.log("Punto capturado para ${action.name}: $percent")
                     Toast.makeText(this,"Punto guardado: $percent",Toast.LENGTH_SHORT).show()
+                    Studio.reopenActionId=actionId; Studio.requestedScreen="editor"
                     startActivity(Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
                 }
             }
@@ -289,8 +356,7 @@ class MacroAccessibilityService: AccessibilityService() {
         if(Studio.running) return
         if(recorder!=null) return
         val (w,h)=screenSize(); recordWidth=w; recordHeight=h
-        val template=Studio.project.template
-        if(template!=null && (w!=template.screenWidth || h!=template.screenHeight)) { Studio.fail("La plantilla tiene otra orientación; vuelve a capturar"); return }
+
         val generation=++recordGeneration; lastEnd=SystemClock.elapsedRealtime()
         val points=ArrayList<Point>(); var downAt=0L; var gap=0L
         val overlay=View(this).apply { setBackgroundColor(Color.argb(12,255,70,100)) }
@@ -344,7 +410,7 @@ class MacroAccessibilityService: AccessibilityService() {
             }; true
         }
         recorder=overlay
-        try { hideBar(); wm.addView(overlay,params(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT)); Studio.recording=true; showBar(); Studio.status="Grabando: cada gesto se reproduce al soltar"; Studio.log("Grabación asistida iniciada") }
+        try { hideBar(); wm.addView(overlay,params(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT)); Studio.recording=true; barMode=BarMode.CONTROL; ensureBar(); Studio.status="Grabando: cada gesto se reproduce al soltar"; Studio.log("Grabación asistida iniciada") }
         catch(e: Exception) { stopRecording(); Studio.fail("No se pudo grabar: ${e.message}") }
     }
     fun stopRecording() {

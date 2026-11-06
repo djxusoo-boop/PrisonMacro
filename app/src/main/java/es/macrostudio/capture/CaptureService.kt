@@ -24,7 +24,31 @@ class CaptureService: Service() {
     private var reader: ImageReader?=null
     private val thread=HandlerThread("screen-frames")
     private val lock=Any(); private var latest: Bitmap?=null; private var frameAt=0L
-    private var w=0; private var h=0
+    private var w=0; private var h=0; private var dpi=0
+    /** Lector de fotogramas a ~5 Hz. Conserva siempre el último fotograma. */
+    private fun createReader(width: Int, height: Int): ImageReader {
+        val r=ImageReader.newInstance(width,height,PixelFormat.RGBA_8888,2); reader=r
+        val captureHandler=Handler(thread.looper); var scheduled=false
+        r.setOnImageAvailableListener({ source ->
+            if(scheduled) return@setOnImageAvailableListener
+            scheduled=true
+            captureHandler.postDelayed({
+                scheduled=false
+                if(reader!==source) return@postDelayed
+                val image=runCatching { source.acquireLatestImage() }.getOrNull() ?: return@postDelayed
+                try {
+                    val iw=image.width; val ih=image.height
+                    val plane=image.planes[0]; val rowWidth=plane.rowStride/plane.pixelStride
+                    val padded=Bitmap.createBitmap(rowWidth,ih,Bitmap.Config.ARGB_8888)
+                    padded.copyPixelsFromBuffer(plane.buffer)
+                    val frame=Bitmap.createBitmap(padded,0,0,iw,ih)
+                    if(frame!==padded) padded.recycle()
+                    synchronized(lock) { latest?.recycle(); latest=frame; frameAt=SystemClock.elapsedRealtime() }
+                } catch(e: Exception) { Studio.log("Error de captura: ${e.message}") } finally { image.close() }
+            },(180-(SystemClock.elapsedRealtime()-frameAt)).coerceAtLeast(0))
+        },captureHandler)
+        return r
+    }
     private val main=Handler(Looper.getMainLooper())
     override fun onBind(intent: Intent?) = null
     override fun onCreate() { super.onCreate(); Studio.init(this); thread.start() }
@@ -45,29 +69,9 @@ class CaptureService: Service() {
             @Suppress("DEPRECATION") getSystemService(WindowManager::class.java).defaultDisplay.getRealMetrics(metrics)
             w=metrics.widthPixels; h=metrics.heightPixels
             require(w.toLong()*h<=8_500_000) { "Resolución demasiado alta: máximo 8,5 megapíxeles" }
-            val r=ImageReader.newInstance(w,h,PixelFormat.RGBA_8888,2); reader=r
-            val captureHandler=Handler(thread.looper); var scheduled=false
-            r.setOnImageAvailableListener({ source ->
-                if(scheduled) return@setOnImageAvailableListener
-                scheduled=true
-                // Sample at ~5 Hz, but acquire AFTER the delay so the last static frame is retained.
-                captureHandler.postDelayed({
-                scheduled=false
-                if(reader!==source) return@postDelayed
-                val image=runCatching { source.acquireLatestImage() }.getOrNull() ?: return@postDelayed
-                try {
-                    val now=SystemClock.elapsedRealtime()
-                    // Never discard the last dirty frame: a static screen may not emit another.
-                    val plane=image.planes[0]; val rowWidth=plane.rowStride/plane.pixelStride
-                    val padded=Bitmap.createBitmap(rowWidth,h,Bitmap.Config.ARGB_8888)
-                    padded.copyPixelsFromBuffer(plane.buffer)
-                    val frame=Bitmap.createBitmap(padded,0,0,w,h)
-                    if(frame!==padded) padded.recycle()
-                    synchronized(lock) { latest?.recycle(); latest=frame; frameAt=now }
-                } catch(e: Exception) { Studio.log("Error de captura: ${e.message}") } finally { image.close() }
-                },(180-(SystemClock.elapsedRealtime()-frameAt)).coerceAtLeast(0))
-            },captureHandler)
-            display=p.createVirtualDisplay("PrisonMacro",w,h,metrics.densityDpi,DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,r.surface,null,main)
+            val r=createReader(w,h)
+            dpi=metrics.densityDpi
+            display=p.createVirtualDisplay("PrisonMacro",w,h,dpi,DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,r.surface,null,main)
             instance=this; Studio.captureReady=true; Studio.status="Captura autorizada"; Studio.log("Captura iniciada: ${w}×${h}")
         } catch(e: Exception) { Studio.fail("No se pudo iniciar la captura: ${e.message}"); stopSelf() }
         return START_NOT_STICKY
@@ -83,9 +87,26 @@ class CaptureService: Service() {
         }
         if(!posted) done(false)
     }
+    /** Al girar la pantalla se redimensiona la captura en lugar de cerrarla,
+     * para que abrir un juego horizontal no obligue a autorizar otra vez. */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        Engine.stop("La orientación cambió; vuelve a autorizar la captura"); stopSelf()
+        main.postDelayed({ resizeToDisplay() },300)
+    }
+    private fun resizeToDisplay() {
+        val vd=display ?: return
+        val metrics=android.util.DisplayMetrics()
+        @Suppress("DEPRECATION") getSystemService(WindowManager::class.java).defaultDisplay.getRealMetrics(metrics)
+        if(metrics.widthPixels==w && metrics.heightPixels==h) return
+        runCatching {
+            val old=reader
+            w=metrics.widthPixels; h=metrics.heightPixels; dpi=metrics.densityDpi
+            val r=createReader(w,h)
+            vd.resize(w,h,dpi); vd.surface=r.surface
+            old?.setOnImageAvailableListener(null,null); old?.close()
+            synchronized(lock) { latest?.recycle(); latest=null }
+            Studio.log("Captura adaptada a ${w}×${h}")
+        }.onFailure { Studio.fail("No se pudo adaptar la captura al giro: ${it.message}"); stopSelf() }
     }
     override fun onDestroy() {
         instance=null; Studio.captureReady=false; Engine.stop("Captura cerrada")

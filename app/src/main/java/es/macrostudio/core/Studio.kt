@@ -32,6 +32,13 @@ object Studio {
     /** Condition that requested the next screen capture. Kept only in memory so a
      * cancelled workflow cannot silently alter a project after an app restart. */
     var pendingTemplateActionId by mutableStateOf<String?>(null)
+    /** Paso cuyo editor debe volver a abrirse al regresar a la app (tras
+     * capturar, recortar o elegir un punto en pantalla). */
+    var reopenActionId by mutableStateOf<String?>(null)
+    /** Identificador especial: la captura será la imagen de inicio de la macro. */
+    const val START_IMAGE_TARGET = "__inicio__"
+    /** Pantalla de la app que debe mostrarse al volver ("editor", "images"…). */
+    var requestedScreen by mutableStateOf<String?>(null)
     private val undo=ArrayDeque<Project>(); private val redo=ArrayDeque<Project>()
     var canUndo by mutableStateOf(false); private set
     var canRedo by mutableStateOf(false); private set
@@ -54,6 +61,30 @@ object Studio {
     fun switch(p: Project) { if(update(p,false)) { undo.clear(); redo.clear(); canUndo=false; canRedo=false } }
     fun undo() { if(undo.isNotEmpty()) { val old=project; if(update(undo.last(),false)) { undo.removeLast(); redo.addLast(old) }; canUndo=undo.isNotEmpty(); canRedo=redo.isNotEmpty() } }
     fun redo() { if(redo.isNotEmpty()) { val old=project; if(update(redo.last(),false)) { redo.removeLast(); undo.addLast(old) }; canUndo=undo.isNotEmpty(); canRedo=redo.isNotEmpty() } }
+    fun create(name: String): Project {
+        val p=Project(name=name.trim().take(100).ifBlank { "Macro ${projects.size+1}" })
+        switch(p); return p
+    }
+    /** Borra una macro guardada. Si era la activa, pasa a otra. */
+    fun delete(id: String) {
+        runCatching { store.delete(id) }.onFailure { fail("No se pudo borrar: ${it.message}"); return }
+        projects=store.list()
+        if(project.id==id) {
+            undo.clear(); redo.clear(); canUndo=false; canRedo=false
+            project=projects.firstOrNull() ?: Project()
+            context.getSharedPreferences("studio",0).edit().putString("active",project.id).apply()
+        }
+        es.macrostudio.projects.Backup.deleteOrphanImages(context,projects)
+        log("Macro borrada")
+    }
+    /** Guarda macros importadas o restauradas. Si una ya existe con el mismo id, se reemplaza. */
+    fun saveAll(items: List<Project>) {
+        items.forEach { p -> p.validate()?.let { error("«${p.name}»: $it") } }
+        items.forEach { store.save(it) }
+        projects=store.list()
+        projects.find { it.id==project.id }?.let { project=it }
+        es.macrostudio.projects.Backup.deleteOrphanImages(context,projects)
+    }
     fun log(message: String) {
         if(Looper.myLooper()!=Looper.getMainLooper()) { main.post { log(message) }; return }
         val line=SimpleDateFormat("HH:mm:ss",Locale.ROOT).format(Date())+"  "+message

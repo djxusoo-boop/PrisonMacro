@@ -61,7 +61,8 @@ object Engine {
         val actions=only ?: p.actions
         if(missingConditionImage(actions)) { Studio.fail("Elige una imagen guardada en cada condición o espera por imagen"); return }
         if(!simulation && MacroAccessibilityService.instance==null) { Studio.fail("Activa la accesibilidad de PrisonMacro"); return }
-        if(triggered && (p.template==null || !Studio.captureReady)) { Studio.fail("Elige una imagen de inicio rápido y autoriza la captura"); return }
+        if(triggered && p.template==null) { Studio.fail("Elige la imagen con la que empieza la macro"); return }
+        if(!simulation && (triggered || p.copy(actions=actions).needsScreenCapture()) && !Studio.captureReady) { Studio.fail("Autoriza la captura de pantalla: esta macro busca imágenes o colores"); return }
         if(actions.none { it.enabled }) { Studio.fail("Añade al menos una acción activa"); return }
         stop(); val token=generation; steps=0; started=SystemClock.elapsedRealtime(); Studio.running=true; Studio.status="Preparando ejecución"
         MacroAccessibilityService.instance?.showBar(); Studio.log(if(simulation) "Simulación iniciada: no se envían gestos" else "Ejecución iniciada")
@@ -69,7 +70,9 @@ object Engine {
             val deadline=SystemClock.elapsedRealtime()+p.timeoutMs
             fun execute() { later(token,p.delayMs) { sequence(actions,token,p,simulation) {
                 Studio.log("Secuencia $number finalizada")
-                if(triggered && p.intervalMs>0 && number<p.maxRuns) later(token,p.intervalMs) { cycle(number+1) } else stop("Completado: $number ejecución(es)")
+                // Las pruebas de un paso suelto se ejecutan una sola vez.
+                val total=if(only!=null) 1 else p.repeatCount
+                if(number<total) later(token,p.intervalMs) { cycle(number+1) } else stop("Completado: $number ejecución(es)")
             } } }
             fun poll() {
                 detect(p) { found -> later(token) {
@@ -123,6 +126,19 @@ object Engine {
         } }; next(0)
     }
     fun detect(p: Project=Studio.project, done: (Boolean)->Unit={}) = detect(p,p.template,done)
+    /** Comprueba dentro de [delayMs] si la imagen elegida está en pantalla y
+     * avisa con un mensaje. No ejecuta ningún gesto. */
+    fun testImage(templateId: String, delayMs: Long=2500) {
+        if(Studio.running || Studio.recording || Studio.detecting) { Studio.fail("Espera a que termine lo que se está ejecutando"); return }
+        val p=Studio.project
+        val saved=p.templates.firstOrNull { it.id==templateId } ?: run { Studio.fail("Esa imagen ya no existe"); return }
+        if(!Studio.captureReady) { Studio.fail("Autoriza la captura de pantalla para probar la imagen"); return }
+        main.postDelayed({
+            detect(p,saved.template) { found ->
+                android.widget.Toast.makeText(Studio.context,(if(found) "✓ Se ve «${saved.name}»" else "✕ No se ve «${saved.name}»")+"\n"+Studio.lastMatch,android.widget.Toast.LENGTH_LONG).show()
+            }
+        },delayMs)
+    }
     private fun detect(p: Project, selected: Template?, done: (Boolean)->Unit) = detectMatch(p,selected) { done(it!=null) }
     private fun detectMatch(p: Project, selected: Template?, done: (Match?)->Unit) {
         if(Studio.detecting) { if(Studio.running) stop("Ya hay una detección en curso"); done(null); return }

@@ -139,12 +139,29 @@ class CoreTest {
         assertEquals(conditionImage.id,updated.actions.single().templateId)
         assertEquals(listOf(quick,conditionImage),updated.templates)
     }
-    @Test fun firstCaptureCanInitializeQuickStartWhileAssigningCondition() {
+    @Test fun captureForAStepNeverBecomesTheStartImage() {
         val target=Action(kind=Kind.IF_IMAGE)
         val saved=SavedTemplate(id="primera",name="Primera",template=Template("primera.png",0,0,20,20,100,100))
         val updated=addCapturedTemplate(Project(actions=listOf(target)),saved,target.id)
-        assertEquals(saved.template,updated.template)
+        assertNull(updated.template)
         assertEquals(saved.id,updated.actions.single().templateId)
+    }
+    @Test fun captureForStartImageEnablesStartOnImage() {
+        val saved=SavedTemplate(id="inicio",name="Inicio",template=Template("inicio.png",0,0,20,20,100,100))
+        val updated=addCapturedTemplate(Project(),saved,Studio.START_IMAGE_TARGET)
+        assertEquals(saved.template,updated.template)
+        assertTrue(updated.startOnImage)
+        assertEquals(listOf(saved),updated.templates)
+    }
+    @Test fun legacyLoopingProjectKeepsItsRepetitions() {
+        val legacy=org.json.JSONObject(es.macrostudio.projects.ProjectStore.encode(Project(intervalMs=5000,maxRuns=7))).apply { remove("repeatCount"); remove("startOnImage") }
+        assertEquals(7,es.macrostudio.projects.ProjectStore.decode(legacy.toString()).repeatCount)
+        val single=org.json.JSONObject(es.macrostudio.projects.ProjectStore.encode(Project(intervalMs=0,maxRuns=7))).apply { remove("repeatCount") }
+        assertEquals(1,es.macrostudio.projects.ProjectStore.decode(single.toString()).repeatCount)
+    }
+    @Test fun repeatCountIsValidated() {
+        assertNull(Project(repeatCount=5).validate())
+        assertNotNull(Project(repeatCount=0).validate())
     }
     @Test fun duplicateRegeneratesAllIds() { val a=Action(children=listOf(Action()),otherwise=listOf(Action())); val b=a.duplicate(); assertNotEquals(a.id,b.id); assertNotEquals(a.children[0].id,b.children[0].id); assertNotEquals(a.otherwise[0].id,b.otherwise[0].id) }
     @Test fun legacyMainImageIsRecoveredIntoTheActionLibrary() {

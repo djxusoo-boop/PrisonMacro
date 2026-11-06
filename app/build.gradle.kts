@@ -6,7 +6,7 @@ plugins {
 }
 
 android { namespace = "es.macrostudio"; compileSdk = 35
-    defaultConfig { applicationId = "es.macrostudio"; minSdk = 26; targetSdk = 35; versionCode = 21; versionName = "0.3.18"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig { applicationId = "es.macrostudio"; minSdk = 26; targetSdk = 35; versionCode = 22; versionName = "0.4.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
@@ -15,6 +15,7 @@ kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarg
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))

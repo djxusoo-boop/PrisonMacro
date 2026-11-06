@@ -1,14 +1,28 @@
-# PrisonMacro · 0.3.18
+# PrisonMacro · 0.4.0
 
 Aplicación Android local de automatización visual en español. Esta es una **versión inicial funcional**, no una implementación completa del documento maestro ni un reemplazo terminado de Macrorify.
 
 ## APK
 
-El archivo para instalar es `outputs/PrisonMacro-0.3.18.apk`. Es una compilación de depuración firmada, **sin `testOnly`**. No distribuyas el APK de `build/intermediates`: Android Studio puede volver a marcarlo como solo para pruebas al pulsar Run.
+El archivo para instalar es `outputs/PrisonMacro-0.4.0.apk`. Es una compilación de depuración firmada, **sin `testOnly`**. No distribuyas el APK de `build/intermediates`: Android Studio puede volver a marcarlo como solo para pruebas al pulsar Run.
 
 El rechazo inicial de BlueStacks quedó confirmado en su registro como `INSTALL_FAILED_TEST_ONLY`. No era un ZIP corrupto. La APK publicada está firmada y sin `testOnly`; el puente ADB de BlueStacks Air se desconectó durante esta última instalación, así que allí debe instalarse desde el botón APK.
 
-## Implementado
+## Novedades 0.4.0 · reorganización al estilo Macrorify
+
+- **Inicio = «Mis macros»**: lista de macros con ▶ y menú ⋮ (editar, renombrar, duplicar, exportar, borrar) y botón «Nueva macro». Los permisos pendientes aparecen arriba con un botón cada uno.
+- **Editor por macro**: lista de pasos con icono, resumen y miniatura; las ramas ✔ Si se ve / ✖ Si NO se ve y los bloques Repetir se ven siempre, con «＋ Añadir paso aquí». Abajo: Añadir paso · Grabar · Reproducir.
+- **Editor de paso a pantalla completa** con una única sección de imagen: 📷 Capturar · 🖼 Mis imágenes · 📁 Galería · ✂ Recortar · 👁 ¿Se ve ahora?
+- **Captura en un toque**: la app pide el permiso si falta, abre el panel en modo captura, recortas, nombras la imagen y vuelves al mismo paso con ella asignada.
+- **Panel flotante nuevo** y arrastrable: ▶/Ⅱ · ■ · ● · 📷 · ⌂ · ✕. ▶ en la app solo prepara el panel; la macro empieza al pulsar ▶ sobre el juego.
+- **Copias de seguridad** en Ajustes: copia completa de todas las macros en un archivo y restauración (detecta si es copia completa o macro suelta). Ahora se pueden borrar macros y las imágenes que nadie usa se limpian.
+- **Cómo empieza / Vueltas**: «Al pulsar ▶» o «Cuando se vea una imagen», y número de vueltas con pausa, para ambos modos.
+- **La captura sobrevive al giro de pantalla** (antes se cerraba y había que reautorizarla).
+- Eliminada la pestaña «Entrenador», que no hacía nada. `MainActivity` pasa de 1.000 líneas a un archivo mínimo; la interfaz está en `ui/`.
+
+Las pruebas unitarias pasan y los tests instrumentados compilan (adaptados a la nueva interfaz), pero **la 0.4.0 no se ha ejecutado todavía en un emulador ni en BlueStacks**: `adb` no arrancó en el entorno donde se hizo el cambio.
+
+## Implementado (versiones anteriores)
 
 - Editor secuencial y jerárquico: pulsación/trayectoria, espera, repetir grupo, clic en imagen detectada, condición de imagen y condición de color con ramas ENTONCES/SI NO.
 - Vista compacta responsiva para horizontal: elimina la cabecera alta, integra Ayuda en las pestañas, reúne los controles del proyecto en una fila y recoge las operaciones de cada tarjeta bajo «Opciones». Se activa automáticamente en pantallas anchas y puede desactivarse.
@@ -57,6 +71,9 @@ JAVA_HOME="$PWD/.tools/jdk-21.0.12.1+1/Contents/Home" ./gradlew :app:assembleDeb
 La ejecución local de macros no necesita red. Capturas, proyectos y registros permanecen en el dispositivo salvo que actives la pestaña **Nube**. La nube usa una cuenta independiente por correo, un enlace de acceso de un solo uso y Realtime Database con presencia privada de dispositivos y proyectos. En el proyecto `prison-ed653` ya están habilitados Email Link y las reglas privadas de `database.rules.json`; si se crea otro proyecto Firebase, hay que repetir esa configuración.
 
 ## Compañero para iPhone
+
+Los campos nuevos de Android (`repeatCount`, `startOnImage`) son opcionales en el JSON: el iPhone los ignora y Android usa sus valores por defecto al leer proyectos del iPhone.
+
 
 Hay un proyecto SwiftUI en `ios/PrisonMacro/PrisonMacro.xcodeproj`. El iPhone permite importar una captura del carrete o de Archivos, recortarla, nombrarla, añadir pasos y condiciones con la miniatura visible, exportar el JSON y sincronizarlo por la misma cuenta de correo. El PNG queda incluido en el JSON, por lo que Android puede descargarlo y usarlo como plantilla. La compilación actual para dispositivo queda en `ios/build/ConnectedDeviceDerivedData/Build/Products/Debug-iphoneos/PrisonMacro.app`.
 

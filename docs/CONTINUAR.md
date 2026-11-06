@@ -1,5 +1,15 @@
 # Continuación del desarrollo
 
+## 0.4.0 · reorganización de la interfaz (pendiente de probar en dispositivo)
+
+- Interfaz reescrita en `app/src/main/java/es/macrostudio/ui/` (Mis macros → Editor → Editor de paso, Imágenes, Ajustes, Nube, Registro). `MainActivity` solo monta `PrisonApp`.
+- `AppController` concentra permisos, panel flotante, captura, galería, exportación y copias. `projects/Backup.kt` hace exportar/importar/copia completa y limpia imágenes huérfanas.
+- Modelo: `repeatCount` y `startOnImage` (opcionales en JSON, schema 4). `addCapturedTemplate` ya no convierte capturas de pasos en imagen de inicio. La comprobación de resolución de gestos solo se aplica si la macro empieza con imagen.
+- `CaptureService` redimensiona la captura al girar en vez de cerrarse. Panel flotante con modos CONTROL/CAPTURE y arrastrable.
+- Verificado: `testDebugUnitTest` OK, `assembleDebug` y `assembleDebugAndroidTest` compilan, APK firmado sin `testOnly`. **No verificado**: los tests instrumentados (DeviceTest reescrito para la nueva interfaz) no se han ejecutado porque `adb` no arrancaba. Lint no se ejecutó (JDK 25 de Android Studio).
+- Próximo paso: ejecutar `scripts/test-device.sh emulator-5560` y probar en BlueStacks el ciclo Nueva macro → Buscar imagen y tocarla → 📷 Capturar → recortar → vuelve al paso → ▶.
+
+
 Nombre público actual: **PrisonMacro**. APK actual: `outputs/PrisonMacro-0.3.18.apk`. Identificador `es.macrostudio` conservado para actualizar sin perder proyectos. La 0.3.18 mantiene la comprobación previa, los resúmenes `ENTONCES / SI NO`, la biblioteca de imágenes y la selección de una captura distinta dentro de cada acción. Android pasa unit tests, lint, firma APK v2 y comprobación de `testOnly`. El compañero iPhone compila para `iphoneos` con los cambios actuales; su instalación física se documenta solo cuando se realiza con firma y dispositivo disponibles. BlueStacks Air sigue necesitando instalación visible desde su botón APK porque su puente ADB no está expuesto en este entorno; no se presenta esa limitación como un fallo de la APK. No ejecutar partidas, compras, mensajes ni cuentas durante las pruebas.
 
 ## Ronda actual · 0.3.18

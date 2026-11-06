@@ -52,6 +52,10 @@ data class Project(
     val intervalMs: Long = 0,
     val timeoutMs: Long = 60_000,
     val maxRuns: Int = 10,
+    /** Veces que se ejecuta la macro completa cada vez que se pulsa ▶. */
+    val repeatCount: Int = 1,
+    /** true: la macro espera a ver [template] antes de cada repetición. */
+    val startOnImage: Boolean = false,
     val templates: List<SavedTemplate> = emptyList(),
     val actions: List<Action> = emptyList()
 ) {
@@ -63,7 +67,7 @@ data class Project(
                 it.x.toLong()+it.width <= it.screenWidth && it.y.toLong()+it.height <= it.screenHeight
         if (name.isBlank() || name.length > 100) return "El nombre debe tener entre 1 y 100 caracteres"
         if (!threshold.isFinite() || threshold !in .7..1.0) return "Similitud fuera de rango"
-        if (delayMs !in 0..600_000 || intervalMs !in 0..3_600_000 || timeoutMs !in 1000..3_600_000 || maxRuns !in 1..1000) return "Tiempos o límite de ejecuciones no válidos"
+        if (delayMs !in 0..600_000 || intervalMs !in 0..3_600_000 || timeoutMs !in 1000..3_600_000 || maxRuns !in 1..1000 || repeatCount !in 1..1000) return "Tiempos o límite de ejecuciones no válidos"
         template?.let { if(!validTemplate(it)) return "Recorte fuera de la pantalla o nombre de imagen inválido" }
         if(templates.size>100 || templates.map { it.id }.toSet().size!=templates.size || templates.any { it.id.isBlank() || it.id.length>60 || it.name.isBlank() || it.name.length>100 || !validTemplate(it.template) }) return "Biblioteca de imágenes no válida"
         var total = 0
@@ -107,6 +111,7 @@ data class Project(
                 check(action.otherwise)
             }
         }
+        if(startOnImage && template==null) issues += "Elige la imagen con la que empieza la macro"
         if(actions.none { it.enabled }) issues += "Añade al menos una acción activa" else check(actions)
         return issues.distinct()
     }
@@ -135,6 +140,26 @@ fun closeRecentSwipeAction(): Action = Action(
     durationMs=350,
     points=listOf(Point(.5f,.70f),Point(.5f,.14f))
 )
+
+fun findAction(items: List<Action>, id: String): Action? {
+    items.forEach { action ->
+        if(action.id==id) return action
+        findAction(action.children,id)?.let { return it }
+        findAction(action.otherwise,id)?.let { return it }
+    }
+    return null
+}
+
+fun actionUsesTemplate(items: List<Action>, templateId: String): Boolean =
+    items.any { it.templateId==templateId || actionUsesTemplate(it.children,templateId) || actionUsesTemplate(it.otherwise,templateId) }
+
+fun countActions(items: List<Action>): Int = items.sumOf { 1+countActions(it.children)+countActions(it.otherwise) }
+
+/** Pasos que necesitan la captura de pantalla autorizada para funcionar. */
+fun Project.needsScreenCapture(): Boolean {
+    fun scan(items: List<Action>): Boolean = items.any { (it.enabled && it.kind in setOf(Kind.IF_IMAGE,Kind.CLICK_IMAGE,Kind.WAIT_IMAGE,Kind.IF_COLOR)) || scan(it.children) || scan(it.otherwise) }
+    return startOnImage || scan(actions)
+}
 
 fun updateAction(items: List<Action>, id: String, change: (Action) -> Action?): List<Action> = items.mapNotNull { a ->
     if (a.id == id) change(a) else a.copy(children = updateAction(a.children,id,change), otherwise = updateAction(a.otherwise,id,change))

@@ -1,6 +1,7 @@
 package es.macrostudio.editor
 
-import android.app.Activity
+import androidx.activity.ComponentActivity
+import androidx.activity.addCallback
 import android.os.Bundle
 import android.content.Intent
 import android.graphics.*
@@ -13,7 +14,7 @@ import java.io.File
 import java.util.UUID
 import kotlin.math.*
 
-class CropActivity: Activity() {
+class CropActivity: ComponentActivity() {
     private var bitmap: Bitmap?=null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); Studio.init(this)
@@ -27,46 +28,69 @@ class CropActivity: Activity() {
             b.recycle(); Studio.fail("Imagen demasiado grande (máximo 8192 px y 20 MP)"); finish(); return
         }
         if(b==null) { Studio.fail(if(existing==null) "No se pudo abrir la captura reciente" else "No se pudo abrir la imagen elegida"); finish(); return }; bitmap=b
-        val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(16,20,31)); setPadding(16,16,16,16) }
+        val actionId=intent.getStringExtra("actionId")
+        val root=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(Color.rgb(14,19,32)); setPadding(12,12,12,12) }
         root.setOnApplyWindowInsetsListener { view,insets ->
             @Suppress("DEPRECATION")
-            view.setPadding(16+insets.systemWindowInsetLeft,16+insets.systemWindowInsetTop,16+insets.systemWindowInsetRight,16+insets.systemWindowInsetBottom)
+            view.setPadding(12+insets.systemWindowInsetLeft,12+insets.systemWindowInsetTop,12+insets.systemWindowInsetRight,12+insets.systemWindowInsetBottom)
             insets
         }
-        root.addView(TextView(this).apply { text=(if(existing==null) "NUEVA CAPTURA" else "RECORTAR MÁS · ${existing.name}")+"\nArrastra un rectángulo sobre el elemento. Incluye bordes y detalles; evita fondos uniformes."; setTextColor(Color.WHITE); textSize=18f })
-        val crop=CropView(b); root.addView(crop,LinearLayout.LayoutParams(-1,0,1f))
-        root.addView(Button(this).apply { text="Guardar recorte"; setOnClickListener {
+        val defaultName=existing?.name ?: when(actionId) {
+            null -> "Imagen ${Studio.project.templates.size+1}"
+            Studio.START_IMAGE_TARGET -> "Imagen de inicio"
+            else -> findAction(Studio.project.actions,actionId)?.name?.take(60)?.let { "$it · imagen" } ?: "Imagen ${Studio.project.templates.size+1}"
+        }
+        val nameField=EditText(this).apply {
+            setText(defaultName); setSingleLine(); setTextColor(Color.WHITE); setHintTextColor(Color.GRAY); hint="Nombre de la imagen"
+            isEnabled=existing==null; textSize=15f
+        }
+        val crop=CropView(b)
+        fun goBack() {
+            if(actionId==Studio.pendingTemplateActionId) Studio.pendingTemplateActionId=null
+            if(actionId!=null && actionId!=Studio.START_IMAGE_TARGET) Studio.reopenActionId=actionId
+            Studio.requestedScreen=if(actionId==null) "images" else "editor"
+            startActivity(Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            finish()
+        }
+        fun save() {
             val r=crop.selected()
-            if(r==null || r.width()<8 || r.height()<8) Toast.makeText(this@CropActivity,"Selecciona un recorte de al menos 8×8 píxeles",Toast.LENGTH_LONG).show()
-            else runCatching {
+            if(r==null || r.width()<8 || r.height()<8) { Toast.makeText(this,"Arrastra el dedo para marcar un rectángulo (mínimo 8×8 píxeles)",Toast.LENGTH_LONG).show(); return }
+            runCatching {
                 val filename="template-${UUID.randomUUID()}.png"
                 val piece=Bitmap.createBitmap(b,r.left,r.top,r.width(),r.height())
                 try {
                     val pixels=IntArray(piece.width*piece.height); piece.getPixels(pixels,0,piece.width,0,0,piece.width,piece.height)
-                    require(es.macrostudio.vision.Matcher.isDistinctive(es.macrostudio.vision.Pixels(piece.width,piece.height,pixels))) { "Recorte uniforme: incluye texto o bordes" }
+                    require(es.macrostudio.vision.Matcher.isDistinctive(es.macrostudio.vision.Pixels(piece.width,piece.height,pixels))) { "El recorte es de un solo color: incluye texto, bordes o detalles" }
                     File(filesDir,filename).outputStream().use { check(piece.compress(Bitmap.CompressFormat.PNG,100,it)) }
                 } finally { if(piece!==b) piece.recycle() }
                 val template=if(existing==null) Template(filename,r.left,r.top,r.width(),r.height(),b.width,b.height)
                     else recroppedTemplate(existing.template,filename,r)
                 val project=Studio.project
-                val updated=if(existing==null) {
-                    val saved=SavedTemplate(name="Captura ${project.templates.size+1}",template=template)
-                    addCapturedTemplate(project,saved,intent.getStringExtra("actionId"))
-                } else project.copy(
+                val name=nameField.text.toString().trim().take(100).ifBlank { defaultName }
+                val updated=if(existing==null) addCapturedTemplate(project,SavedTemplate(name=name,template=template),actionId)
+                else project.copy(
                     template=if(project.template?.file==existing.template.file) template else project.template,
                     templates=project.templates.map { if(it.id==existing.id) it.copy(template=template) else it }
                 )
                 check(Studio.update(updated)) { "No se pudo guardar el proyecto" }
-                if(intent.getStringExtra("actionId")==Studio.pendingTemplateActionId) Studio.pendingTemplateActionId=null
-                if(existing!=null && updated.template?.file!=existing.template.file && updated.templates.none { it.template.file==existing.template.file }) File(filesDir,existing.template.file).delete()
-                Studio.log("Plantilla guardada: ${r.width()}×${r.height()} en (${r.left}, ${r.top})")
-                startActivity(Intent(this@CropActivity,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)); finish()
-            }.onFailure { Studio.fail("No se pudo guardar el recorte: ${it.message}"); Toast.makeText(this@CropActivity,it.message,Toast.LENGTH_LONG).show() }
-        } })
-        root.addView(Button(this).apply { text="Cancelar"; setOnClickListener {
-            if(intent.getStringExtra("actionId")==Studio.pendingTemplateActionId) Studio.pendingTemplateActionId=null
-            finish()
-        } }); setContentView(root)
+                if(existing!=null) es.macrostudio.projects.Backup.deleteOrphanImages(this,Studio.projects)
+                Studio.status="Imagen guardada: $name"
+                Studio.log("Imagen guardada: $name · ${r.width()}×${r.height()} en (${r.left}, ${r.top})")
+                goBack()
+            }.onFailure { Studio.fail("No se pudo guardar el recorte: ${it.message}"); Toast.makeText(this,it.message,Toast.LENGTH_LONG).show() }
+        }
+        val bar=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=android.view.Gravity.CENTER_VERTICAL }
+        bar.addView(Button(this).apply { text="✕ Cancelar"; isAllCaps=false; setOnClickListener { goBack() } })
+        bar.addView(nameField,LinearLayout.LayoutParams(0,-2,1f))
+        bar.addView(Button(this).apply { text="✓ Guardar"; isAllCaps=false; setOnClickListener { save() } })
+        root.addView(bar)
+        root.addView(TextView(this).apply {
+            text=if(existing==null) "Arrastra el dedo sobre el botón o elemento que quieres reconocer. Incluye bordes o texto; evita fondos lisos." else "Marca una zona más pequeña dentro de «${existing.name}»."
+            setTextColor(Color.rgb(180,200,210)); textSize=13f; setPadding(4,6,4,6)
+        })
+        root.addView(crop,LinearLayout.LayoutParams(-1,0,1f))
+        setContentView(root)
+        onBackPressedDispatcher.addCallback(this) { goBack() }
     }
     override fun onDestroy() { bitmap?.recycle(); bitmap=null; super.onDestroy() }
     inner class CropView(private val image: Bitmap): View(this@CropActivity) {
@@ -78,7 +102,15 @@ class CropActivity: Activity() {
             destination.set((width-iw)/2,(height-ih)/2,(width+iw)/2,(height+ih)/2)
             paint.style=Paint.Style.FILL; canvas.drawBitmap(image,null,destination,paint)
             val a=start; val b=end
-            if(a!=null && b!=null) { paint.color=Color.CYAN; paint.style=Paint.Style.STROKE; paint.strokeWidth=4f; canvas.drawRect(min(a.x,b.x),min(a.y,b.y),max(a.x,b.x),max(a.y,b.y),paint); paint.style=Paint.Style.FILL }
+            if(a!=null && b!=null) {
+                val l=min(a.x,b.x); val t=min(a.y,b.y); val r=max(a.x,b.x); val bt=max(a.y,b.y)
+                paint.style=Paint.Style.FILL; paint.color=Color.argb(140,0,0,0)
+                canvas.drawRect(destination.left,destination.top,destination.right,t,paint)
+                canvas.drawRect(destination.left,bt,destination.right,destination.bottom,paint)
+                canvas.drawRect(destination.left,t,l,bt,paint)
+                canvas.drawRect(r,t,destination.right,bt,paint)
+                paint.color=Color.CYAN; paint.style=Paint.Style.STROKE; paint.strokeWidth=4f; canvas.drawRect(l,t,r,bt,paint); paint.style=Paint.Style.FILL; paint.color=Color.WHITE
+            }
         }
         override fun onTouchEvent(e: MotionEvent): Boolean {
             if(e.actionMasked==MotionEvent.ACTION_CANCEL || e.pointerCount>1) {
@@ -114,12 +146,12 @@ internal fun recroppedTemplate(existing: Template, filename: String, crop: Rect)
 )
 
 /**
- * Añade una captura a la biblioteca y, si se pidió desde una condición, la
- * asigna solo a esa condición. Una segunda captura de condición no debe
- * sustituir silenciosamente la imagen independiente de inicio rápido.
+ * Añade una captura a la biblioteca y la asigna solo a quien la pidió: un paso
+ * concreto o, con [Studio.START_IMAGE_TARGET], la imagen de inicio de la macro.
+ * Una captura hecha sin destino solo se guarda en la biblioteca.
  */
-internal fun addCapturedTemplate(project: Project, saved: SavedTemplate, actionId: String?): Project = project.copy(
-    template=if(actionId==null || project.template==null) saved.template else project.template,
-    templates=project.templates+saved,
-    actions=if(actionId!=null) assignTemplateToAction(project.actions,actionId,saved.id) else project.actions
-)
+internal fun addCapturedTemplate(project: Project, saved: SavedTemplate, actionId: String?): Project = when (actionId) {
+    null -> project.copy(templates=project.templates+saved)
+    Studio.START_IMAGE_TARGET -> project.copy(template=saved.template,startOnImage=true,templates=project.templates+saved)
+    else -> project.copy(templates=project.templates+saved,actions=assignTemplateToAction(project.actions,actionId,saved.id))
+}

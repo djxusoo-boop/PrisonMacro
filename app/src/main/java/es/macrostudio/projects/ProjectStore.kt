@@ -31,10 +31,14 @@ class ProjectStore(context: Context) {
         val file=AtomicFile(base); val stream=file.startWrite()
         try { stream.write(encode(p).toByteArray()); file.finishWrite(stream) } catch(e: Exception) { file.failWrite(stream); throw e }
     }
+    fun delete(id: String) {
+        require(id.matches(Regex("[a-zA-Z0-9-]{1,60}")))
+        File(dir,"$id.json").delete(); File(dir,"$id.json.backup").delete()
+    }
     companion object {
         fun encode(p: Project): String = JSONObject().apply {
             put("schemaVersion",4); put("id",p.id); put("name",p.name); put("mode",p.mode.name); put("threshold",p.threshold)
-            put("delayMs",p.delayMs); put("intervalMs",p.intervalMs); put("timeoutMs",p.timeoutMs); put("maxRuns",p.maxRuns)
+            put("delayMs",p.delayMs); put("intervalMs",p.intervalMs); put("timeoutMs",p.timeoutMs); put("maxRuns",p.maxRuns); put("repeatCount",p.repeatCount); put("startOnImage",p.startOnImage)
             p.template?.let { put("template",JSONObject().put("file",it.file).put("x",it.x).put("y",it.y).put("width",it.width).put("height",it.height).put("screenWidth",it.screenWidth).put("screenHeight",it.screenHeight)) }
             put("templates",JSONArray().apply { p.templates.forEach { saved -> put(JSONObject().put("id",saved.id).put("name",saved.name).put("template",templateJson(saved.template))) } })
             put("actions",actionsJson(p.actions))
@@ -65,7 +69,7 @@ class ProjectStore(context: Context) {
             // guardaban la imagen principal fuera de `templates`. Recuperarla
             // aquí evita que el selector de una acción aparezca vacío.
             val library=recoverPrimaryTemplate(t,decodedLibrary)
-            val p=Project(id=root.getString("id"),name=root.getString("name"),template=t,mode=SearchMode.valueOf(root.getString("mode")),threshold=root.getDouble("threshold"),delayMs=root.getLong("delayMs"),intervalMs=root.getLong("intervalMs"),timeoutMs=root.getLong("timeoutMs"),maxRuns=root.getInt("maxRuns"),templates=library,actions=actions(root.getJSONArray("actions"),0))
+            val p=Project(id=root.getString("id"),name=root.getString("name"),template=t,mode=SearchMode.valueOf(root.getString("mode")),threshold=root.getDouble("threshold"),delayMs=root.getLong("delayMs"),intervalMs=root.getLong("intervalMs"),timeoutMs=root.getLong("timeoutMs"),maxRuns=root.getInt("maxRuns"),repeatCount=if(root.has("repeatCount")) root.getInt("repeatCount") else if(root.getLong("intervalMs")>0) root.getInt("maxRuns").coerceIn(1,1000) else 1,startOnImage=root.optBoolean("startOnImage",false),templates=library,actions=actions(root.getJSONArray("actions"),0))
             require(p.validate()==null) { p.validate().orEmpty() }; return p
         }
     }

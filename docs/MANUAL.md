@@ -1,104 +1,83 @@
-# Manual · PrisonMacro 0.3.15
+# Manual · PrisonMacro 0.4.0
 
-## Instalar en BlueStacks
+## Instalar
 
-Usa el botón APK de la barra lateral y selecciona **outputs/PrisonMacro-0.3.15.apk**. No selecciones el antiguo `app/build/intermediates/apk/debug/app-debug.apk`.
+En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.4.0.apk`. Se instala encima de la versión anterior y conserva tus macros.
 
-No es necesario iniciar sesión en Google para instalar este APK. Si aparece otro error, conserva el mensaje exacto. El error anterior era `INSTALL_FAILED_TEST_ONLY`, corregido en el proceso de empaquetado. ADB de BlueStacks estaba desactivado; no se han cambiado sus ajustes ni cuentas.
+## Cómo está organizada la app
 
-## Usar horizontal o vertical
+```
+Mis macros (inicio)
+├── ▶ en cada macro ............ muestra el panel flotante y te deja en tu juego
+├── ⋮ en cada macro ............ editar · cambiar nombre · duplicar · exportar · borrar
+├── ＋ Nueva macro
+└── ⚙ Ajustes
+    ├── 💾 Copias de seguridad .. crear copia de TODO · restaurar / importar
+    ├── 🔐 Permisos ............. accesibilidad · captura de pantalla
+    ├── ☁ Nube · 📜 Registro · 🧪 Laboratorio
+    └── 📱 Orientación
 
-En **Proyectos → Orientación de PrisonMacro** elige:
+Editor de una macro
+├── 🚩 Cómo empieza ............ al pulsar ▶ o cuando se vea una imagen
+├── Lista de pasos (toca uno para editarlo; ⋮ para subir, bajar, duplicar, borrar…)
+├── 🖼 Imágenes ................ biblioteca de recortes de esta macro
+├── ⚙ Ajustes de la macro ...... vueltas, pausas, sensibilidad de la búsqueda
+└── Abajo: ＋ Añadir paso · ● Grabar · ▶ Reproducir
+```
 
-- **Horizontal fijado**: valor predeterminado y recomendado mientras usas BlueStacks con un juego horizontal. Evita que el editor vaya girando al volver del juego.
-- **Vertical fijado**: pensado para editar listas largas. Activa automáticamente la vista compacta: sin cabecera alta, con tarjetas plegadas y controles inferiores con iconos para aprovechar la altura.
-- **Seguir sistema**: deja que BlueStacks o Android decidan la orientación.
+## Primera vez: permisos
 
-Antes de capturar, grabar o ejecutar sobre una pantalla horizontal, vuelve a **Horizontal fijado**. Las plantillas y gestos están ligados a su orientación y resolución.
+En la pantalla de inicio aparece «Antes de empezar» con dos botones:
 
-## Primer proyecto
+1. **Accesibilidad → Activar.** Busca PrisonMacro en la lista y actívalo. Si Android dice «ajuste restringido»: Ajustes › Apps › PrisonMacro › ⋮ › Permitir ajustes restringidos.
+2. **Captura de pantalla → Autorizar.** Elige compartir la pantalla completa. Android la vuelve a pedir si se reinicia la app; si no la has autorizado, la app la pide sola cuando hace falta.
 
-1. En Proyectos, cambia el nombre. Los cambios válidos se guardan automáticamente.
-2. En Grabador, abre el Laboratorio. Empieza allí antes de usar otras aplicaciones.
-3. En Proyectos, activa el servicio PrisonMacro en Accesibilidad. Android puede exigir permitir ajustes restringidos para una app instalada manualmente; esa decisión corresponde al usuario.
-4. En Imagen, pulsa Autorizar captura. Comparte la pantalla completa. Android puede volver a pedir este consentimiento al reiniciar la sesión.
-5. Abre el panel flotante, navega al Laboratorio o app de prueba y pulsa Captura. El panel se oculta antes de tomar la imagen.
-6. Arrastra un rectángulo sobre el elemento a reconocer y guarda. Incluye texto, bordes o detalles, no un fondo liso.
-7. Selecciona Punto exacto para exigir la posición original, o Cualquier punto para buscar en la pantalla completa. Esta versión exige la misma resolución, orientación y escala.
+Ahora la captura **ya no se corta al girar la pantalla** (por ejemplo, al abrir un juego horizontal): se adapta sola.
 
-Cada nuevo recorte se añade a **Biblioteca de capturas**. Allí puedes renombrarlo, elegirlo como imagen de inicio rápido o borrarlo si ninguna condición lo está usando. La imagen de inicio rápido es independiente de las capturas elegidas dentro de cada condición.
+## Crear una macro
 
-## Una imagen, varios clics
+1. **＋ Nueva macro**, escribe el nombre y pulsa Crear. Se abre el editor.
+2. Elige una forma:
+   - **● Grabar**: la app se esconde y aparece el panel flotante. Ve a tu juego, pulsa **●** y haz tus toques. Cada toque se reproduce al soltarlo y se guarda con la espera que hubo antes. Pulsa **■ Terminar grabación** y vuelves al editor con los pasos.
+   - **＋ Añadir paso**: elige qué hacer, agrupado en *Tocar la pantalla*, *Esperar*, *Decidir y repetir* y *Android y apps*.
+3. Pulsa **▶ Reproducir**. La app se esconde, vas a tu juego y pulsas **▶** en el panel cuando quieras empezar.
 
-1. Vuelve al panel flotante sobre tu app de prueba.
-2. Pulsa Grabar. Haz un clic o un arrastre y suelta.
-3. Espera a que se reproduzca el gesto antes del siguiente. Se graba una trayectoria de un solo contacto, no multitáctil.
-4. Pulsa FIN REC. Los pasos y las esperas se añaden al proyecto, sin reemplazar los anteriores.
-5. En Editor, ajusta tiempos y pasos. Las coordenadas de pulsaciones manuales son porcentajes de la pantalla.
-6. **Ejecutar** empieza por la primera instrucción, por ejemplo Abrir aplicación. **Simular todo** recorre los pasos sin enviar gestos ni abrir aplicaciones.
+### Panel flotante
 
-Para el caso directo «cuando aparezca esta imagen, pulsa», añade **Detectar imagen y hacer clic**. En su edición verás la biblioteca y podrás tocar la miniatura que quieras; no usa automáticamente la imagen principal. La tarjeta del editor conserva la miniatura y el nombre para que sepas qué hará sin abrirla. Después elige:
+`⠿ ▶ ■ ● 📷 ⌂ ✕` — arrastra desde **⠿** para moverlo. **▶** reproduce (y pasa a **Ⅱ** para pausar), **■** para, **●** graba, **📷** guarda una captura en la biblioteca, **⌂** vuelve a PrisonMacro, **✕** oculta el panel.
 
-- **Centro**: pulsa el centro de la coincidencia encontrada.
-- **Desplazamiento**: pulsa a una distancia relativa de la captura, en X/Y entre -100 y 100 %.
-- **Punto fijo**: pulsa en coordenadas porcentuales de toda la pantalla, útil si la imagen sirve de aviso pero el botón está en otra zona.
-- **Un clic**, **Doble clic** o **Pulsación larga**.
+## Imágenes: «cuando veas esto, toca aquí»
 
-La acción espera hasta el tiempo máximo del proyecto. Si no encuentra la captura, detiene la macro y deja el motivo en Registro; no ejecuta un clic a ciegas.
+Añade el paso **🎯 Buscar imagen y tocarla** (o **⏳ Esperar a ver una imagen**, o **🖼 Si se ve una imagen…**). En su editor, la sección de imagen tiene:
 
-Para crear «Abrir aplicación → Si se ve la imagen → Entonces pulsar», añade primero Abrir aplicación, pulsa **+ Condición** y toca el nombre de esa condición. El editor muestra las capturas del proyecto actual con miniatura y nombre. Más abajo aparecen las de otros proyectos: pulsa **Usar** para copiar una al proyecto actual y dejarla seleccionada; el original permanece en su proyecto.
+- **📷 Capturar** — lo más rápido. La app se esconde y aparece un panel con **📷 Capturar**. Ve a la pantalla del juego, pulsa Capturar, arrastra el dedo sobre el botón que quieres reconocer, ponle nombre y **✓ Guardar**. Vuelves automáticamente al mismo paso con la imagen ya puesta.
+- **🖼 Mis imágenes** — reutiliza una imagen de esta macro o de otra (se copia).
+- **📁 Galería / archivos** — trae una imagen del dispositivo (en BlueStacks, «Pick from Mac»).
+- **✂ Recortar** — recorta más una imagen ya guardada.
+- **👁 ¿Se ve ahora?** — la app se esconde y en 2,5 s te dice si encuentra la imagen en pantalla.
 
-### Menú de cada acción
+En **Buscar imagen y tocarla** eliges dónde tocar (en el centro, desplazado o en otro punto de la pantalla, que puedes marcar tocando la pantalla) y el tipo de toque (uno, doble o largo).
 
-En cada tarjeta del Editor, **⋮ Más** concentra las operaciones habituales: editar la acción, cambiar su captura, probarla sin ejecutar el resto, añadir una acción dentro de una condición o grupo, insertar una acción encima o una condición después, duplicar en la misma rama y borrar. En una acción anidada, estas operaciones conservan su sitio dentro de ENTONCES o SI NO.
+En **Si se ve una imagen…** y **Si se ve un color…** la lista muestra las dos ramas, **✔ Si se ve** y **✖ Si NO se ve**, cada una con su **＋ Añadir paso aquí**. Igual con **🔁 Repetir pasos**.
 
-La captura asignada aparece siempre en **Imagen elegida ahora**. Usa **Buscar captura por nombre** para reducir la lista; el mismo texto filtra también las capturas disponibles en otros proyectos. Seleccionar otra tarjeta solo cambia esta condición y no altera las demás.
+## Cómo empieza y cuántas veces se repite
 
-«+ Condición» pregunta si quieres **SI SE VE UNA IMAGEN** o **SI SE VE UN COLOR** y la coloca justo después del paso elegido. Si pulsas Cancelar en la edición de una condición recién creada, no queda ningún bloque vacío en la secuencia.
+Toca la tarjeta **🚩** del editor (o ⚙):
 
-Dentro de esa misma condición tienes tres formas de obtener la imagen:
+- **Al pulsar ▶** o **Cuando se vea una imagen** (con 📷 Capturar o 🖼 Mis imágenes para elegirla).
+- **Vueltas**: cuántas veces se repite la macro entera, y la pausa entre vueltas.
+- **Búsqueda de imágenes**: en toda la pantalla o solo en su sitio original, el parecido exigido (90–95 % recomendado) y el tiempo máximo buscando.
 
-1. Tocar una captura de la biblioteca del proyecto.
-2. Pulsar **Traer imagen desde Archivos / Galería / Mac**, elegir una imagen del selector completo del sistema y recortarla. En BlueStacks hay que entrar por **Pick From Mac**. Ese selector externo no muestra la biblioteca interna de PrisonMacro. Al guardar queda asignada directamente a esa condición.
-3. Pulsar **＋ Hacer una captura nueva y recortarla**. PrisonMacro abre Imagen y muestra a qué condición se asignará la próxima captura. Autoriza la pantalla si hace falta, abre el panel, pulsa Captura, recorta y guarda. Puedes cancelar esa asignación antes de capturar.
+Por seguridad, cualquier ejecución se detiene a los 30 minutos o tras 10.000 pasos.
 
-Una condición nueva queda en **Imagen elegida: NINGUNA** hasta que toques expresamente una miniatura. La app nunca asigna por su cuenta la primera captura.
+## Copias de seguridad
 
-La vista compacta se activa automáticamente en horizontal ancho. Quita la cabecera alta, coloca Ayuda junto a las pestañas y muestra varias instrucciones sin reducir el tamaño principal de las letras. Pulsa **Opciones** en cualquier tarjeta para moverla, duplicarla, añadir una condición, simularla o quitarla. Pulsa **Compacta** para volver a la vista amplia.
+- **Una macro**: en Mis macros, ⋮ › **📤 Exportar / compartir**. Genera un `.json` con sus imágenes.
+- **Todas**: ⚙ Ajustes › **💾 Crear copia de seguridad**. Un solo archivo con todas las macros e imágenes.
+- **Recuperar**: ⚙ Ajustes › **♻ Restaurar copia o importar una macro**. La app reconoce el tipo de archivo:
+  - una copia completa reemplaza las macros con el mismo origen y no toca las demás (pide confirmación);
+  - una macro suelta se añade como nueva.
 
-La tarjeta de una condición enseña siempre la miniatura o muestra de color, el nombre elegido y el número de pasos de **Entonces** y **Si no**. Pulsa **＋ Añadir acción en ENTONCES** directamente en la tarjeta para elegir el clic, arrastre, espera o función que se ejecutará al encontrarla. Pulsa **Opciones** y después despliega sus detalles para ver las ramas; pulsa directamente el nombre de la instrucción para editarla. **Recortar esta imagen** permite ajustar de nuevo la seleccionada conservando su asociación. Añade la pulsación o función dentro de ENTONCES. SI NO es opcional; vacío significa continuar con el siguiente paso. La opción **Ejecutar al ver la imagen de inicio rápido** sigue disponible por separado en Imagen.
+## Límites
 
-## Condición de color
-
-En Editor → Añadir instrucción, elige **SI SE VE UN COLOR**. Puedes escribir un color hexadecimal como `#FF5500` o usar uno de los botones rápidos Rojo, Verde, Azul o Amarillo. Configura la tolerancia RGB entre 0 y 255: un valor pequeño exige mayor parecido y uno grande admite más variaciones. El modo **Cualquier punto** busca por toda la pantalla; **Punto exacto** utiliza coordenadas X/Y porcentuales. Para reducir falsos positivos no basta un píxel aislado: varios píxeles vecinos deben tener un color parecido. Después añade acciones en ENTONCES y, opcionalmente, en SI NO.
-
-El panel ocupa la franja superior. No puede grabarse un toque sobre sus botones. La reproducción asistida ocurre al soltar el gesto, por lo que no equivale a una grabación pasiva instantánea.
-
-## Tiempos y repetición
-
-- Espera tras detectar: retardo antes de empezar los pasos.
-- Tiempo entre ejecuciones: pausa **después de completar** la secuencia antes de volver a buscar; no es una cadencia de inicio a inicio. Cero significa una ejecución.
-- Tiempo máximo buscando: evita esperar para siempre.
-- Máximo de repeticiones: límite adicional. Si la imagen sigue presente y el intervalo es mayor que cero, puede volver a activarse.
-- Límite de seguridad global: 30 minutos y 10.000 instrucciones por sesión.
-
-En los campos numéricos pulsa Aplicar. Los valores inválidos se muestran en rojo y no se guardan.
-
-## Condiciones, pruebas y parada
-
-IF evalúa la imagen una vez y ejecuta ENTONCES o SI NO. Si falta la captura o la plantilla es ilegible, el motor se detiene: no confunde un error técnico con una imagen ausente.
-
-Simular no envía gestos, pero sí respeta esperas y evalúa condiciones de imagen cuando hay captura. Pausa actúa entre instrucciones; el gesto actual puede acabar. PARAR cancela las acciones futuras y las búsquedas; una pulsación prolongada ya entregada a Android puede continuar hasta su duración configurada. No uses duraciones largas si necesitas detener inmediatamente.
-
-La notificación permite cerrar la captura. Un cambio de orientación finaliza la sesión de captura para evitar clics en coordenadas incorrectas: reautoriza y vuelve a capturar/grabar.
-
-## Guardar y recuperar
-
-Cada proyecto conserva su estado actual y una copia anterior válida. Si el JSON actual se corrompe, el lector intenta recuperar la copia. Deshacer/rehacer pertenece a la sesión abierta. Exportar JSON incluye todas las capturas y sus asociaciones y sirve como copia portátil. Importar crea otro proyecto, no sobrescribe el existente. Máximo de importación: 30 MB.
-
-En **Nube**, cada correo funciona como una cuenta independiente. Solicita un enlace de acceso, ábrelo en el mismo dispositivo y usa **Subir proyecto actual** para guardar el proyecto con sus capturas. En otro dispositivo, entra con el mismo correo, pulsa **Actualizar lista** y usa **Descargar**. El proyecto descargado se importa como una copia nueva para no sobrescribir el que ya tienes abierto. La presencia muestra las sesiones vistas durante los últimos tres minutos. Aplica `database.rules.json` en Realtime Database antes de usar esta función.
-# Acciones fáciles de Android
-
-En Editor → Añadir instrucción están disponibles: salir al inicio, volver atrás, aplicaciones recientes, desplegar notificaciones, desplegar ajustes rápidos y abrir una aplicación. En «Abrir aplicación / juego», pulsa «Elegir app instalada» y guarda. Añade una espera o detección para dar tiempo a cargar.
-
-«Salir al inicio» no fuerza el cierre del juego. «Recientes» solo abre el selector. **Cerrar app activa desde Recientes** abre ese selector, espera entre 500 y 3000 ms, desliza hacia arriba la tarjeta que estaba activa y vuelve a Inicio. Es la alternativa sin root más sencilla para retirar la app de Recientes; no equivale a «Forzar detención» y Android puede conservar el proceso en memoria. Pruébala primero en el laboratorio y aumenta la espera si el selector de tu dispositivo tarda en aparecer. La simulación no abre apps ni paneles. Android puede rechazar acciones según dispositivo o permisos: el motor se detiene si recibe rechazo.
+Misma resolución y orientación en que se capturó la imagen; un solo dedo al grabar; sin OCR, variables ni multitáctil. «Cerrar la app actual» la quita de Recientes pero no equivale a «Forzar detención».

@@ -140,212 +140,107 @@ class DeviceTest {
         waitForText("VOLVER AL EDITOR")
         instrumentation.runOnMainSync { lab.finish(); editor.finish() }
     }
-    @Test fun editorAssignsSavedCaptureToOneCondition() {
+    /** Prepara una macro, abre la app en [screen] y ejecuta [body]; restaura la macro original al final. */
+    private fun withEditor(project: Project, screen: String?="editor", body: ()->Unit) {
         val context=instrumentation.targetContext
         var original: Project?=null
+        instrumentation.runOnMainSync { Studio.init(context); original=Studio.project; Studio.pendingTemplateActionId=null; Studio.switch(project); Studio.requestedScreen=screen }
+        val editor=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        try { instrumentation.waitForIdleSync(); body() }
+        finally { instrumentation.runOnMainSync { Studio.requestedScreen=null; Studio.switch(original!!); Studio.delete(project.id); editor.finish() } }
+    }
+    @Test fun homeListsMacrosWithPlayButton() {
+        withEditor(Project(name="Macro de portada",actions=listOf(Action(kind=Kind.WAIT,name="Espera",durationMs=500))),screen=null) {
+            waitForText("Mis macros")
+            waitForText("Macro de portada")
+            waitForText("Reproducir Macro de portada")
+            waitForText("Nueva macro")
+        }
+    }
+    @Test fun editorAssignsSavedCaptureToOneCondition() {
         val first=SavedTemplate(id="boton-azul",name="Botón azul",template=Template("boton-azul.png",0,0,20,20,1080,2400))
         val second=SavedTemplate(id="cruz-anuncio",name="Cruz de anuncio",template=Template("cruz-anuncio.png",100,100,24,24,1080,2400))
-        instrumentation.runOnMainSync {
-            Studio.init(context); original=Studio.project
-            Studio.switch(Project(name="Selector visual",template=first.template,templates=listOf(first,second),actions=listOf(Action(kind=Kind.IF_IMAGE,name="Condición configurable",templateId=first.id))))
-        }
-        val editor=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-        try {
-            instrumentation.waitForIdleSync()
-            instrumentation.uiAutomation.takeScreenshot().let { shot -> java.io.File(context.cacheDir,"selector-editor.png").outputStream().use { shot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }; shot.recycle() }
-            waitForText("Captura: Botón azul")
-            // En la pantalla compacta el control se expone con su texto visible
-            // «Editar»; el detalle semántico puede no aparecer en el árbol
-            // clásico de UIAutomator aunque el botón sea accesible y pulsable.
-            assertTrue("El botón visible debe abrir el selector de esa condición",clickNear(waitForText("Editar")))
-            instrumentation.waitForIdleSync()
-            waitForText("Captura de esta condición")
-            waitForText("Imagen elegida ahora")
-            waitForText("ELEGIDA")
-            assertTrue("El selector debe permitir buscar por nombre",setText(waitForText("Buscar captura por nombre"),"Cruz"))
-            waitForText("1 resultado(s)")
-            instrumentation.uiAutomation.takeScreenshot().let { shot ->
-                java.io.File(context.cacheDir,"selector-search-0.3.3.png").outputStream().use { shot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it) }
-                shot.recycle()
-            }
-            assertTrue("Debe poder elegir una captura de la biblioteca",clickNear(waitForText("Cruz de anuncio")))
-            waitForText("＋ Hacer una captura nueva y recortarla")
-            assertTrue("Debe guardar la captura elegida",clickNear(waitForText("Guardar")))
+        withEditor(Project(name="Selector visual",templates=listOf(first,second),actions=listOf(Action(kind=Kind.IF_IMAGE,name="Condición configurable",templateId=first.id)))) {
+            assertTrue(clickNear(waitForText("Si se ve «Botón azul»")))
+            waitForText("Imagen que hay que comprobar")
+            assertTrue(clickNear(waitForText("Mis imágenes")))
+            assertTrue("Debe poder elegir otra imagen",clickNear(waitForText("Cruz de anuncio")))
+            assertTrue(clickNear(waitForText("Guardar")))
             instrumentation.waitForIdleSync()
             instrumentation.runOnMainSync { assertEquals(second.id,Studio.project.actions.single().templateId) }
-        } finally { instrumentation.runOnMainSync { Studio.switch(original!!); editor.finish() } }
+        }
     }
     @Test fun newConditionDoesNotAutoSelectFirstCapture() {
-        val context=instrumentation.targetContext
-        var original: Project?=null
         val saved=SavedTemplate(id="captura-existente",name="No elegir sola",template=Template("existente.png",0,0,20,20,1080,2400))
-        val condition=Action(kind=Kind.IF_IMAGE,name="Condición todavía vacía",templateId="")
-        instrumentation.runOnMainSync {
-            Studio.init(context); original=Studio.project
-            Studio.switch(Project(name="Sin selección implícita",template=saved.template,templates=listOf(saved),actions=listOf(condition)))
-        }
-        val editor=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-        try {
-            instrumentation.waitForIdleSync()
-            assertTrue(clickNear(waitForText("Editar")))
-            waitForText("Imagen elegida: NINGUNA")
+        withEditor(Project(name="Sin selección implícita",templates=listOf(saved),actions=listOf(Action(kind=Kind.IF_IMAGE,name="Condición todavía vacía",templateId="")))) {
+            waitForText("Falta elegir la imagen")
+            assertTrue(clickNear(waitForText("Condición todavía vacía")))
+            waitForText("Todavía no hay imagen")
             instrumentation.runOnMainSync { assertEquals("",Studio.project.actions.single().templateId) }
-        } finally { instrumentation.runOnMainSync { Studio.switch(original!!); editor.finish() } }
-    }
-    @Test fun imageLibraryCanAssignExistingCaptureToPendingCondition() {
-        val context=instrumentation.targetContext
-        var original: Project?=null
-        val first=SavedTemplate(id="biblioteca-primera",name="Primera guardada",template=Template("primera-guardada.png",0,0,20,20,1080,2400))
-        val second=SavedTemplate(id="biblioteca-segunda",name="Segunda guardada",template=Template("segunda-guardada.png",40,50,24,24,1080,2400))
-        val condition=Action(kind=Kind.IF_IMAGE,name="Condición pendiente",templateId="")
-        instrumentation.runOnMainSync {
-            Studio.init(context); original=Studio.project; Studio.pendingTemplateActionId=null
-            Studio.switch(Project(name="Asignar desde biblioteca",template=first.template,templates=listOf(first,second),actions=listOf(condition)))
         }
-        val editor=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-        try {
-            instrumentation.waitForIdleSync()
-            assertTrue(clickNear(waitForText("Editar")))
-            assertTrue(clickNear(waitForText("＋ Hacer una captura nueva y recortarla")))
-            waitForText("La próxima captura se asignará a: Condición pendiente")
-            waitForText("Usar esta captura en este paso")
-            assertTrue(clickNear(waitForText("Usar esta captura en este paso")))
-            instrumentation.waitForIdleSync()
-            instrumentation.runOnMainSync {
-                assertEquals(first.id,Studio.project.actions.single().templateId)
-                assertNull(Studio.pendingTemplateActionId)
-            }
-        } finally { instrumentation.runOnMainSync { Studio.pendingTemplateActionId=null; Studio.switch(original!!); editor.finish() } }
     }
     @Test fun editorOffersDirectImageClickWithItsOwnCaptureAndTarget() {
-        val context=instrumentation.targetContext
-        var original: Project?=null
         val first=SavedTemplate(id="clic-primera",name="Primera captura",template=Template("primera.png",0,0,20,20,1080,2400))
         val second=SavedTemplate(id="clic-segunda",name="Cruz de anuncio",template=Template("segunda.png",100,100,24,24,1080,2400))
-        val click=Action(kind=Kind.CLICK_IMAGE,name="Pulsar aviso",templateId=first.id)
-        instrumentation.runOnMainSync {
-            Studio.init(context); original=Studio.project
-            Studio.switch(Project(name="Clic visual",template=first.template,templates=listOf(first,second),actions=listOf(click)))
-        }
-        val editor=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-        try {
-            instrumentation.waitForIdleSync()
-            waitForText("Clic en: Primera captura")
-            assertTrue(clickNear(waitForText("Editar")))
-            waitForText("Imagen que debe encontrar para hacer clic")
+        withEditor(Project(name="Clic visual",templates=listOf(first,second),actions=listOf(Action(kind=Kind.CLICK_IMAGE,name="Pulsar aviso",templateId=first.id)))) {
+            assertTrue(clickNear(waitForText("Toca «Primera captura»")))
+            waitForText("Imagen que hay que tocar")
+            waitForText("Dónde tocar al encontrarla")
+            assertTrue(clickNear(waitForText("Mis imágenes")))
             assertTrue(clickNear(waitForText("Cruz de anuncio")))
             assertTrue(clickNear(waitForText("Guardar")))
             instrumentation.waitForIdleSync()
-            instrumentation.runOnMainSync {
-                val saved=Studio.project.actions.single()
-                assertEquals(second.id,saved.templateId)
-            }
-            waitForText("Clic en: Cruz de anuncio")
-        } finally { instrumentation.runOnMainSync { Studio.switch(original!!); editor.finish() } }
+            instrumentation.runOnMainSync { assertEquals(second.id,Studio.project.actions.single().templateId) }
+            waitForText("Toca «Cruz de anuncio»")
+        }
     }
     @Test fun editorOffersColorConditionWithBranchesAndSettings() {
-        val context=instrumentation.targetContext
-        var original: Project?=null
-        val condition=Action(kind=Kind.IF_COLOR,name="Color de alarma",targetColor=0xffff5500.toInt(),colorTolerance=35)
-        instrumentation.runOnMainSync {
-            Studio.init(context); original=Studio.project
-            Studio.switch(Project(name="Condición de color",actions=listOf(condition)))
+        withEditor(Project(name="Condición de color",actions=listOf(Action(kind=Kind.IF_COLOR,name="Color de alarma",targetColor=0xffff5500.toInt(),colorTolerance=35)))) {
+            waitForText("Si se ve #FF5500")
+            waitForText("Si NO se ve")
+            assertTrue(clickNear(waitForText("Color de alarma")))
+            waitForText("Color, p. ej. #FF5500")
+            waitForText("Tolerancia (0–255)")
+            waitForText("En toda la pantalla")
         }
-        val editor=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-        try {
-            instrumentation.waitForIdleSync()
-            waitForText("Color: #FF5500")
-            assertTrue(clickNear(waitForText("Detalles de Color de alarma")))
-            // El botón está antes que las ramas. Púlsalo antes de que el buscador
-            // de accesibilidad desplace la lista para localizar los textos bajos.
-            assertTrue(clickNear(waitForText("Cambiar color de esta condición")))
-            waitForText("Color, por ejemplo #FF5500")
-            waitForText("Tolerancia RGB (0–255)")
-            waitForText("Cualquier punto")
-        } finally { instrumentation.runOnMainSync { Studio.switch(original!!); editor.finish() } }
     }
-    @Test fun conditionAfterLetsChooseTypeAndCancelLeavesProjectUntouched() {
-        val context=instrumentation.targetContext
-        var original: Project?=null
+    @Test fun addStepAfterAndCancelLeavesProjectUntouched() {
         val initial=Action(kind=Kind.WAIT,name="Paso inicial",durationMs=100)
-        instrumentation.runOnMainSync {
-            Studio.init(context); original=Studio.project
-            Studio.switch(Project(name="Cancelar condición",actions=listOf(initial)))
-        }
-        val editor=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-        try {
-            instrumentation.waitForIdleSync()
-            // En horizontal ancho la vista compacta recoge las operaciones de la
-            // tarjeta para mostrar más pasos sin reducir el tamaño del texto.
-            assertTrue(clickNear(waitForText("Opciones")))
-            assertTrue(clickNear(waitForText("+ Condición")))
-            waitForText("Añadir condición")
-            waitForText("SI SE VE UNA IMAGEN")
-            waitForText("SI SE VE UN COLOR")
-            assertTrue(clickNear(waitForText("SI SE VE UNA IMAGEN")))
-            waitForText("Captura de esta condición")
+        withEditor(Project(name="Cancelar condición",actions=listOf(initial))) {
+            assertTrue(clickNear(waitForText("Opciones de Paso inicial")))
+            assertTrue(clickNear(waitForText("Añadir paso después")))
+            waitForText("¿Qué debe hacer este paso?")
+            assertTrue(clickNear(waitForText("Si se ve una imagen")))
+            waitForText("Imagen que hay que comprobar")
             assertTrue(clickNear(waitForText("Cancelar")))
             instrumentation.waitForIdleSync()
             instrumentation.runOnMainSync {
                 assertEquals(1,Studio.project.actions.size)
                 assertEquals(initial.id,Studio.project.actions.single().id)
             }
-        } finally { instrumentation.runOnMainSync { Studio.switch(original!!); editor.finish() } }
-    }
-    @Test fun actionMenuShowsMacrorifyStyleEditingOperations() {
-        val context=instrumentation.targetContext
-        var original: Project?=null
-        instrumentation.runOnMainSync {
-            Studio.init(context); original=Studio.project
-            Studio.switch(Project(name="Menú de acción",actions=listOf(Action(kind=Kind.WAIT,name="Espera visible",durationMs=1000))))
         }
-        val editor=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-        try {
-            instrumentation.waitForIdleSync()
-            assertTrue(clickNear(waitForText("Más opciones de Espera visible")))
-            waitForText("Editar acción")
-            waitForText("▶ Probar acción")
-            waitForText("＋ Añadir condición después")
-            waitForText("＋ Añadir acción encima")
-            waitForText("Duplicar en esta posición")
-            waitForText("Borrar")
-        } finally { instrumentation.runOnMainSync { Studio.switch(original!!); editor.finish() } }
     }
-    @Test fun imageLibraryOffersDirectCropRenameAndOrdering() {
-        val context=instrumentation.targetContext
-        var original: Project?=null
+    @Test fun actionMenuShowsEditingOperations() {
+        withEditor(Project(name="Menú de acción",actions=listOf(Action(kind=Kind.WAIT,name="Espera visible",durationMs=1000)))) {
+            assertTrue(clickNear(waitForText("Opciones de Espera visible")))
+            waitForText("Editar")
+            waitForText("Probar este paso")
+            waitForText("Añadir paso antes")
+            waitForText("Añadir paso después")
+            waitForText("Duplicar")
+            waitForText("Desactivar")
+            waitForText("Borrar")
+        }
+    }
+    @Test fun imageLibraryOffersCropRenameAndStartImage() {
         val first=SavedTemplate(id="biblioteca-1",name="Primera captura",template=Template("primera.png",0,0,20,20,1080,2400))
         val second=SavedTemplate(id="biblioteca-2",name="Segunda captura",template=Template("segunda.png",30,40,24,26,1080,2400))
-        instrumentation.runOnMainSync {
-            Studio.init(context); original=Studio.project
-            Studio.switch(Project(name="Biblioteca editable",template=first.template,templates=listOf(first,second)))
-        }
-        val editor=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-        try {
-            instrumentation.waitForIdleSync()
-            assertTrue(clickNear(waitForText("Imagen")))
-            waitForText("Primera captura")
-            waitForText("Recortar")
-            waitForText("Usar para inicio rápido")
-        } finally { instrumentation.runOnMainSync { Studio.switch(original!!); editor.finish() } }
-    }
-    @Test fun newScreenCaptureRemembersRequestingCondition() {
-        val context=instrumentation.targetContext
-        var original: Project?=null
-        val condition=Action(kind=Kind.IF_IMAGE,name="Condición de captura nueva")
-        instrumentation.runOnMainSync {
-            Studio.init(context); original=Studio.project; Studio.pendingTemplateActionId=null
-            Studio.switch(Project(name="Asignación pendiente",actions=listOf(condition)))
-        }
-        val editor=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
-        try {
-            instrumentation.waitForIdleSync()
-            assertTrue(clickNear(waitForText("Editar")))
-            assertTrue(clickNear(waitForText("＋ Hacer una captura nueva y recortarla")))
-            waitForText("La próxima captura se asignará a: Condición de captura nueva")
-            instrumentation.runOnMainSync { assertEquals(condition.id,Studio.pendingTemplateActionId) }
-        } finally {
-            instrumentation.runOnMainSync { Studio.pendingTemplateActionId=null; Studio.switch(original!!); editor.finish() }
+        withEditor(Project(name="Biblioteca editable",templates=listOf(first,second)),screen="images") {
+            waitForText("Segunda captura")
+            assertTrue(clickNear(waitForText("Opciones de Primera captura")))
+            waitForText("Cambiar nombre")
+            waitForText("Recortar más")
+            waitForText("Usar como imagen de inicio")
         }
     }
     @Test fun engineSimulationRepeatsAndStops() {
