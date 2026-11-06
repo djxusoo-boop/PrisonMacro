@@ -99,7 +99,7 @@ La app de iPhone edita macros con las capturas que ya hiciste en Android/BlueSta
 2. En el iPhone, pestaña **Editor** › **Importar** y elige ese archivo: entran **todas** las macros con sus capturas.
 3. Edita, exporta el `.json` o súbelo a la Nube, y en Android ábrelo con **♻ Restaurar o importar** (o descárgalo desde ☁ Nube).
 
-Desde 0.5.0 el iPhone conserva los ajustes de Android que todavía no sabe editar (cómo empieza, vueltas, «sin fin», saltar si no aparece la imagen…). Con versiones anteriores del iPhone esos ajustes se perdían al guardar.
+Desde 0.5.0 el iPhone conserva todos los ajustes de Android y además deja editar, en la pestaña Editor, la **Repetición** (vueltas, «sin fin», pausa entre vueltas y «parar sola a los … minutos») y, en los pasos de imagen, **cuánto buscarla** y **qué hacer si no aparece**. La forma de empezar (al pulsar ▶ o al ver una imagen) se sigue cambiando en Android. Con versiones anteriores del iPhone esos ajustes se perdían al guardar.
 
 ## Límites
 

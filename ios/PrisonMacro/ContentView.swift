@@ -101,6 +101,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     projectHeader
                     executionReadiness
+                    MacroRunSettings(project: $project)
                     Divider()
                     Text("Pasos de la macro").font(.title2.weight(.semibold))
                     if project.actions.isEmpty {
@@ -534,6 +535,12 @@ private struct ImageActionEditor: View {
                 Picker("Tipo de clic", selection: $action.clickStyle) {
                     Text("Un clic").tag(MacroClickStyle.SINGLE); Text("Doble clic").tag(MacroClickStyle.DOUBLE); Text("Pulsación larga").tag(MacroClickStyle.LONG)
                 }.pickerStyle(.menu)
+                IntegerField(title: "Buscarla durante (s, 0 = lo de la macro)", value: Binding(get: { action.waitMs / 1000 }, set: { action.waitMs = $0 * 1000 }), minimum: 0, maximum: 3_600)
+            }
+            if action.kind == .CLICK_IMAGE || action.kind == .WAIT_IMAGE {
+                Picker("Si no aparece", selection: $action.skipIfMissing) {
+                    Text("Parar la macro").tag(false); Text("Saltar este paso y seguir").tag(true)
+                }.pickerStyle(.segmented)
             }
         }.padding(10).background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
     }
@@ -692,6 +699,25 @@ private struct TemplateThumbnail: View {
     }
 }
 
+/// Cuántas vueltas da la macro y cuándo se para sola (los mismos ajustes que en Android).
+private struct MacroRunSettings: View {
+    @Binding var project: MacroProject
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Repetición").font(.headline)
+            Toggle("Sin fin (hasta pulsar ■ en Android)", isOn: Binding(get: { project.repeatCount == 0 }, set: { project.repeatCount = $0 ? 0 : 1 }))
+            if project.repeatCount != 0 {
+                Stepper("Vueltas: \(project.repeatCount)", value: $project.repeatCount, in: 1...1000)
+            }
+            IntegerField(title: "Pausa entre vueltas (ms)", value: $project.intervalMs, minimum: 0, maximum: 86_400_000)
+            Stepper("Parar sola a los \(project.maxMinutes == 0 ? "— (nunca)" : "\(project.maxMinutes) min")", value: $project.maxMinutes, in: 0...1440, step: 5)
+            Text(project.startOnImage ? "Empieza cuando se vea su imagen de inicio (se cambia en Android)." : "Empieza al pulsar ▶ en Android.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .padding(12).background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
 private struct IntegerField: View {
     let title: String
     @Binding var value: Int64
@@ -779,11 +805,11 @@ private func branchSummary(_ actions: [MacroAction], empty: String) -> String {
 private func readableActionSummary(_ action: MacroAction) -> String {
     switch action.kind {
     case .WAIT: return "esperar \(readableDuration(action.durationMs))"
-    case .WAIT_IMAGE: return "esperar hasta ver imagen"
+    case .WAIT_IMAGE: return action.skipIfMissing ? "esperar imagen (si no, sigue)" : "esperar hasta ver imagen"
     case .OPEN_APP: return "abrir aplicación"
     case .CLOSE_ACTIVE: return "cerrar aplicación"
     case .GESTURE: return action.points.count <= 1 ? "pulsar" : "hacer trayectoria"
-    case .CLICK_IMAGE: return "clic en imagen"
+    case .CLICK_IMAGE: return action.skipIfMissing ? "clic en imagen (si no, sigue)" : "clic en imagen"
     case .IF_IMAGE: return "comprobar imagen"
     case .IF_COLOR: return "comprobar color"
     case .REPEAT: return "repetir \(action.count) veces"
