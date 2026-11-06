@@ -1,8 +1,8 @@
-# Manual · PrisonMacro 0.5.0
+# Manual · PrisonMacro 0.5.1
 
 ## Instalar
 
-En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.5.0.apk`. Se instala encima de la versión anterior y conserva tus macros.
+En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.5.1.apk`. Se instala encima de la versión anterior y conserva tus macros.
 
 ## Cómo está organizada la app
 
@@ -99,7 +99,7 @@ La app de iPhone edita macros con las capturas que ya hiciste en Android/BlueSta
 2. En el iPhone, pestaña **Editor** › **Importar** y elige ese archivo: entran **todas** las macros con sus capturas.
 3. Edita, exporta el `.json` o súbelo a la Nube, y en Android ábrelo con **♻ Restaurar o importar** (o descárgalo desde ☁ Nube).
 
-Desde 0.5.0 el iPhone conserva todos los ajustes de Android y además deja editar, en la pestaña Editor, la **Repetición** (vueltas, «sin fin», pausa entre vueltas y «parar sola a los … minutos») y, en los pasos de imagen, **cuánto buscarla** y **qué hacer si no aparece**. La forma de empezar (al pulsar ▶ o al ver una imagen) se sigue cambiando en Android. Con versiones anteriores del iPhone esos ajustes se perdían al guardar.
+Desde 0.5.1 el iPhone conserva todos los ajustes de Android y además deja editar, en la pestaña Editor, la **Repetición** (vueltas, «sin fin», pausa entre vueltas y «parar sola a los … minutos») y, en los pasos de imagen, **cuánto buscarla** y **qué hacer si no aparece**. La forma de empezar (al pulsar ▶ o al ver una imagen) se sigue cambiando en Android. Antes de 0.5.1, las macros con pasos no se podían pasar entre Android y iPhone (cada uno guardaba los puntos de los toques de una forma distinta); ahora los dos leen ambos formatos.
 
 ## Límites
 

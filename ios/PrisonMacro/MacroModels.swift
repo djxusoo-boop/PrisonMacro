@@ -21,6 +21,25 @@ enum MacroClickStyle: String, Codable, CaseIterable {
 struct MacroPoint: Codable, Hashable {
     var x: Float
     var y: Float
+
+    init(x: Float, y: Float) { self.x = x; self.y = y }
+
+    private enum CodingKeys: String, CodingKey { case x, y }
+
+    /// Android guarda cada punto como [x, y]; versiones antiguas del iPhone, como {"x":…,"y":…}. Se aceptan las dos.
+    init(from decoder: Decoder) throws {
+        if var pair = try? decoder.unkeyedContainer() {
+            x = try pair.decode(Float.self); y = try pair.decode(Float.self)
+        } else {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            x = try c.decode(Float.self, forKey: .x); y = try c.decode(Float.self, forKey: .y)
+        }
+    }
+
+    /// Se guarda como Android, para que cualquier versión de Android lo abra.
+    func encode(to encoder: Encoder) throws {
+        var pair = encoder.unkeyedContainer(); try pair.encode(x); try pair.encode(y)
+    }
 }
 
 struct MacroTemplate: Codable, Hashable {

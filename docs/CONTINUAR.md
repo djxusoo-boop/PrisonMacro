@@ -1,3 +1,4 @@
+> **0.5.1 (6 nov 2026):** arreglado el formato de puntos entre Android (`[x,y]`) e iPhone (`{x,y}`), que impedía pasar macros con pasos; iPhone con pasos plegables y edición de repetición/saltar; build-apk.sh completo con lint (`android.experimental.lint.version=8.13.0`). 40 pruebas unitarias correctas; iOS revisado en el simulador. Sin probar en BlueStacks (adb colgado) ni instalado en el iPhone.
 > **0.5.0 (6 nov 2026):** repetición sin fin y parada automática configurable; saltar paso si no aparece la imagen; deslizamientos dibujados; color elegido sobre captura; avisos visibles (Toast) y estado en el panel; el iPhone conserva los campos nuevos e importa copias completas. 39 pruebas unitarias y assembleDebug correctos; iOS compila para el simulador. Sin probar en emulador/BlueStacks (adb colgado) y sin lint.
 
 # Continuación del desarrollo

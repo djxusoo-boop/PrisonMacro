@@ -181,6 +181,19 @@ class CoreTest {
         val p=es.macrostudio.projects.ProjectStore.decode(json.toString())
         assertEquals(30,p.maxMinutes); assertFalse(p.actions[0].skipIfMissing); assertEquals(0L,p.actions[0].waitMs)
     }
+    /** ios-export.json lo generó el codificador real de la app de iPhone (MacroModels.swift). */
+    @Test fun macroSavedOnIphoneOpensOnAndroidWithAllOptions() {
+        val json=javaClass.classLoader!!.getResource("ios-export.json")!!.readText()
+        val p=es.macrostudio.projects.ProjectStore.decode(json)
+        assertNull(p.validate())
+        assertEquals("Recolectar oro",p.name)
+        assertEquals(0,p.repeatCount); assertEquals(45,p.maxMinutes); assertEquals(2000L,p.intervalMs)
+        val click=p.actions[0]
+        assertEquals(Kind.CLICK_IMAGE,click.kind); assertTrue(click.skipIfMissing); assertEquals(5000L,click.waitMs)
+        assertEquals(Kind.WAIT,p.actions[1].kind); assertEquals(1500L,p.actions[1].durationMs)
+        assertEquals(2,p.actions[2].points.size); assertEquals(0.8f,p.actions[2].points[1].x,0.0001f)
+        assertFalse(p.actions[3].skipIfMissing)
+    }
     @Test fun colorTargetMapsBackToItsStep() {
         assertEquals("abc",stepOfCaptureTarget(Studio.COLOR_PREFIX+"abc"))
         assertEquals("abc",stepOfCaptureTarget("abc"))

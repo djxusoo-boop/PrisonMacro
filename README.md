@@ -8,6 +8,12 @@ El archivo para instalar es `outputs/PrisonMacro-0.4.0.apk`. Es una compilación
 
 El rechazo inicial de BlueStacks quedó confirmado en su registro como `INSTALL_FAILED_TEST_ONLY`. No era un ZIP corrupto. La APK publicada está firmada y sin `testOnly`; el puente ADB de BlueStacks Air se desconectó durante esta última instalación, así que allí debe instalarse desde el botón APK.
 
+## Novedades 0.5.1
+
+- **Arreglado:** las macros con pasos no se podían pasar entre Android y iPhone: Android guarda cada punto como `[x, y]` y el iPhone como `{"x","y"}`. Ahora los dos aceptan ambos y el iPhone guarda como Android. Hay una prueba con un JSON generado por el código real del iPhone (`app/src/test/resources/ios-export.json`).
+- **iPhone:** pasos plegables con un resumen de una línea; repetición, «sin fin», pausa y límite de minutos editables; en los pasos de imagen, cuánto buscarla y si saltar cuando no aparece; tiempos en segundos con su nombre siempre visible.
+- **Compilación:** `scripts/build-apk.sh` vuelve a funcionar completo (lint usa un motor compatible con el JDK de Android Studio, `android.experimental.lint.version` en `gradle.properties`).
+
 ## Novedades 0.5.0
 
 - Repetir **sin fin** (hasta pulsar ■) y parada automática configurable (0 = nunca).
@@ -84,7 +90,7 @@ La ejecución local de macros no necesita red. Capturas, proyectos y registros p
 
 ## Compañero para iPhone
 
-Los campos nuevos de Android (`repeatCount`, `startOnImage`, `maxMinutes`, y en cada paso `skipIfMissing` y `waitMs`) son opcionales en el JSON. Desde 0.5.0 el iPhone los conserva al guardar aunque todavía no los edite; Android usa sus valores por defecto al leer proyectos que no los tengan.
+Los campos nuevos de Android (`repeatCount`, `startOnImage`, `maxMinutes`, y en cada paso `skipIfMissing` y `waitMs`) son opcionales en el JSON. Desde 0.5.0 el iPhone los conserva al guardar y desde 0.5.1 los edita (salvo `startOnImage`); Android usa sus valores por defecto al leer proyectos que no los tengan.
 
 
 Hay un proyecto SwiftUI en `ios/PrisonMacro/PrisonMacro.xcodeproj`. El iPhone permite importar una captura del carrete o de Archivos, recortarla, nombrarla, añadir pasos y condiciones con la miniatura visible, exportar el JSON y sincronizarlo por la misma cuenta de correo. El PNG queda incluido en el JSON, por lo que Android puede descargarlo y usarlo como plantilla. La compilación actual para dispositivo queda en `ios/build/ConnectedDeviceDerivedData/Build/Products/Debug-iphoneos/PrisonMacro.app`.

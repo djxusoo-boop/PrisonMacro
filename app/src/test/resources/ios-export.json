@@ -1,0 +1,162 @@
+{
+  "actions" : [
+    {
+      "children" : [
+
+      ],
+      "clickOffsetX" : 0,
+      "clickOffsetY" : 0,
+      "clickStyle" : "SINGLE",
+      "clickTarget" : "CENTER",
+      "colorMode" : "ANYWHERE",
+      "colorTolerance" : 24,
+      "colorX" : 0.5,
+      "colorY" : 0.5,
+      "count" : 2,
+      "description" : "",
+      "durationMs" : 80,
+      "enabled" : true,
+      "id" : "a1",
+      "kind" : "CLICK_IMAGE",
+      "name" : "Tocar Recoger",
+      "otherwise" : [
+
+      ],
+      "packageName" : "es.macrostudio",
+      "points" : [
+        {
+          "x" : 0.5,
+          "y" : 0.5
+        }
+      ],
+      "skipIfMissing" : true,
+      "targetColor" : -65536,
+      "templateId" : "",
+      "waitMs" : 5000
+    },
+    {
+      "children" : [
+
+      ],
+      "clickOffsetX" : 0,
+      "clickOffsetY" : 0,
+      "clickStyle" : "SINGLE",
+      "clickTarget" : "CENTER",
+      "colorMode" : "ANYWHERE",
+      "colorTolerance" : 24,
+      "colorX" : 0.5,
+      "colorY" : 0.5,
+      "count" : 2,
+      "description" : "",
+      "durationMs" : 1500,
+      "enabled" : true,
+      "id" : "a2",
+      "kind" : "WAIT",
+      "name" : "Esperar",
+      "otherwise" : [
+
+      ],
+      "packageName" : "es.macrostudio",
+      "points" : [
+        {
+          "x" : 0.5,
+          "y" : 0.5
+        }
+      ],
+      "skipIfMissing" : false,
+      "targetColor" : -65536,
+      "templateId" : "",
+      "waitMs" : 0
+    },
+    {
+      "children" : [
+
+      ],
+      "clickOffsetX" : 0,
+      "clickOffsetY" : 0,
+      "clickStyle" : "SINGLE",
+      "clickTarget" : "CENTER",
+      "colorMode" : "ANYWHERE",
+      "colorTolerance" : 24,
+      "colorX" : 0.5,
+      "colorY" : 0.5,
+      "count" : 2,
+      "description" : "",
+      "durationMs" : 400,
+      "enabled" : true,
+      "id" : "a3",
+      "kind" : "GESTURE",
+      "name" : "Deslizar mapa",
+      "otherwise" : [
+
+      ],
+      "packageName" : "es.macrostudio",
+      "points" : [
+        {
+          "x" : 0.2,
+          "y" : 0.5
+        },
+        {
+          "x" : 0.8,
+          "y" : 0.5
+        }
+      ],
+      "skipIfMissing" : false,
+      "targetColor" : -65536,
+      "templateId" : "",
+      "waitMs" : 0
+    },
+    {
+      "children" : [
+
+      ],
+      "clickOffsetX" : 0,
+      "clickOffsetY" : 0,
+      "clickStyle" : "SINGLE",
+      "clickTarget" : "CENTER",
+      "colorMode" : "ANYWHERE",
+      "colorTolerance" : 24,
+      "colorX" : 0.5,
+      "colorY" : 0.5,
+      "count" : 2,
+      "description" : "",
+      "durationMs" : 30000,
+      "enabled" : true,
+      "id" : "a4",
+      "kind" : "WAIT_IMAGE",
+      "name" : "Esperar botón",
+      "otherwise" : [
+
+      ],
+      "packageName" : "es.macrostudio",
+      "points" : [
+        {
+          "x" : 0.5,
+          "y" : 0.5
+        }
+      ],
+      "skipIfMissing" : false,
+      "targetColor" : -65536,
+      "templateId" : "",
+      "waitMs" : 0
+    }
+  ],
+  "delayMs" : 500,
+  "id" : "demo",
+  "imagesBase64" : {
+
+  },
+  "intervalMs" : 2000,
+  "maxMinutes" : 45,
+  "maxRuns" : 10,
+  "mode" : "ANYWHERE",
+  "name" : "Recolectar oro",
+  "repeatCount" : 0,
+  "schemaVersion" : 4,
+  "startOnImage" : false,
+  "templates" : [
+
+  ],
+  "threshold" : 0.93,
+  "timeoutMs" : 60000
+}

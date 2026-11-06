@@ -51,6 +51,12 @@ class ProjectStore(context: Context) {
             put("points",JSONArray().apply { a.points.forEach { put(JSONArray().put(it.x.toDouble()).put(it.y.toDouble())) } })
             put("children",actionsJson(a.children)); put("otherwise",actionsJson(a.otherwise))
         }) } }
+        /** Android guarda [x, y]; el iPhone antes de 0.5.0 guardaba {"x":…,"y":…}. Se aceptan los dos. */
+        private fun decodePoint(value: Any): Point = when (value) {
+            is JSONArray -> Point(value.getDouble(0).toFloat(), value.getDouble(1).toFloat())
+            is JSONObject -> Point(value.getDouble("x").toFloat(), value.getDouble("y").toFloat())
+            else -> throw org.json.JSONException("Punto no válido")
+        }
         fun decode(json: String): Project {
             require(json.length <= 2_000_000) { "Proyecto demasiado grande" }
             val root=JSONObject(json); val schema=root.getInt("schemaVersion"); require(schema in 2..4) { "Versión de proyecto incompatible" }
@@ -60,7 +66,7 @@ class ProjectStore(context: Context) {
                 return List(array.length()) { i ->
                     require(++count <= 500)
                     val a=array.getJSONObject(i); val points=a.getJSONArray("points"); require(points.length() <= 1000)
-                    Action(id=a.getString("id"),kind=Kind.valueOf(a.getString("kind")),name=a.getString("name"),description=a.optString("description",""),enabled=a.getBoolean("enabled"),durationMs=a.getLong("durationMs"),count=a.getInt("count"),packageName=a.optString("packageName","es.macrostudio"),templateId=a.optString("templateId",""),clickTarget=runCatching { ClickTarget.valueOf(a.optString("clickTarget",ClickTarget.CENTER.name)) }.getOrDefault(ClickTarget.CENTER),clickStyle=runCatching { ClickStyle.valueOf(a.optString("clickStyle",ClickStyle.SINGLE.name)) }.getOrDefault(ClickStyle.SINGLE),clickOffsetX=a.optDouble("clickOffsetX",0.0).toFloat(),clickOffsetY=a.optDouble("clickOffsetY",0.0).toFloat(),targetColor=a.optInt("targetColor",0xFFFF0000.toInt()),colorTolerance=a.optInt("colorTolerance",24),colorMode=runCatching { SearchMode.valueOf(a.optString("colorMode",SearchMode.ANYWHERE.name)) }.getOrDefault(SearchMode.ANYWHERE),colorX=a.optDouble("colorX",.5).toFloat(),colorY=a.optDouble("colorY",.5).toFloat(),skipIfMissing=a.optBoolean("skipIfMissing",false),waitMs=a.optLong("waitMs",0),points=List(points.length()) { val pt=points.getJSONArray(it); Point(pt.getDouble(0).toFloat(),pt.getDouble(1).toFloat()) },children=actions(a.getJSONArray("children"),depth+1),otherwise=actions(a.getJSONArray("otherwise"),depth+1))
+                    Action(id=a.getString("id"),kind=Kind.valueOf(a.getString("kind")),name=a.getString("name"),description=a.optString("description",""),enabled=a.getBoolean("enabled"),durationMs=a.getLong("durationMs"),count=a.getInt("count"),packageName=a.optString("packageName","es.macrostudio"),templateId=a.optString("templateId",""),clickTarget=runCatching { ClickTarget.valueOf(a.optString("clickTarget",ClickTarget.CENTER.name)) }.getOrDefault(ClickTarget.CENTER),clickStyle=runCatching { ClickStyle.valueOf(a.optString("clickStyle",ClickStyle.SINGLE.name)) }.getOrDefault(ClickStyle.SINGLE),clickOffsetX=a.optDouble("clickOffsetX",0.0).toFloat(),clickOffsetY=a.optDouble("clickOffsetY",0.0).toFloat(),targetColor=a.optInt("targetColor",0xFFFF0000.toInt()),colorTolerance=a.optInt("colorTolerance",24),colorMode=runCatching { SearchMode.valueOf(a.optString("colorMode",SearchMode.ANYWHERE.name)) }.getOrDefault(SearchMode.ANYWHERE),colorX=a.optDouble("colorX",.5).toFloat(),colorY=a.optDouble("colorY",.5).toFloat(),skipIfMissing=a.optBoolean("skipIfMissing",false),waitMs=a.optLong("waitMs",0),points=List(points.length()) { decodePoint(points.get(it)) },children=actions(a.getJSONArray("children"),depth+1),otherwise=actions(a.getJSONArray("otherwise"),depth+1))
                 }
             }
             val t=root.optJSONObject("template")?.let(::templateFromJson)

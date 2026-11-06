@@ -1,3 +1,4 @@
+> **0.5.1:** `MacroPoint` lee `[x,y]` (Android) y `{x,y}` y guarda `[x,y]`; editor con pasos plegables y ajustes de repetición/saltar.
 # PrisonMacro para iPhone · 0.3.18
 
 > **Cambio de Android 0.5.0 (6 nov 2026):** el modelo del iPhone conserva ahora `repeatCount`, `startOnImage`, `maxMinutes`, `skipIfMissing` y `waitMs`, que antes se perdían al guardar; y «Importar» acepta la copia de seguridad completa de Android (añade todas sus macros con sus capturas). Compilado para el simulador (`BUILD SUCCEEDED`); no se ha instalado en el iPhone. El resto de este documento describe la 0.3.18.
