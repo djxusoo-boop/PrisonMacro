@@ -1,0 +1,1 @@
+<resources><style name="Theme.MacroStudio" parent="android:style/Theme.Material.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:colorAccent">#9C7BFF</item></style></resources>

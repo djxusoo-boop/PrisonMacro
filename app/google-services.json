@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "527208557970",
+    "firebase_url": "https://prison-ed653.firebaseio.com",
+    "project_id": "prison-ed653",
+    "storage_bucket": "prison-ed653.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:527208557970:android:998761dc34963c2ff6654b",
+        "android_client_info": {
+          "package_name": "es.macrostudio"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIPdbK4zrpdhNlRCuv7GVpIQFcI2agiBQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

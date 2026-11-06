@@ -1,0 +1,7 @@
+* text=auto
+gradlew.bat text eol=crlf
+*.sh text eol=lf
+*.kt text eol=lf
+*.swift text eol=lf
+*.md text eol=lf
+*.json text eol=lf

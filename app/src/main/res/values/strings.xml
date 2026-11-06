@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">PrisonMacro</string>
+    <string name="accessibility_description">Permite ejecutar los gestos de las secuencias de PrisonMacro cuando el usuario lo autoriza.</string>
+</resources>

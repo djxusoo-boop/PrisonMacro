@@ -1,0 +1,25 @@
+.gradle/
+.idea/
+.kotlin/
+**/build/
+local.properties
+outputs/
+.tools/
+*.iml
+
+# MacOS y estado local de Xcode
+.DS_Store
+**/.DS_Store
+**/xcuserdata/
+*.xcuserstate
+DerivedData/
+**/DerivedData/
+
+# Credenciales y firmas locales: nunca deben entrar en el repositorio
+*.p12
+*.mobileprovision
+*.keystore
+*.jks
+.env
+.env.*
+!.env.example
