@@ -101,7 +101,6 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     projectHeader
                     executionReadiness
-                    MacroRunSettings(project: $project)
                     Divider()
                     Text("Pasos de la macro").font(.title2.weight(.semibold))
                     if project.actions.isEmpty {
@@ -121,8 +120,9 @@ struct ContentView: View {
                         }
                     }
                     addActionMenu
+                    MacroRunSettings(project: $project).padding(.top, 8)
                 }
-                .padding(.horizontal).padding(.bottom, 24)
+                .padding(.horizontal).padding(.bottom, 100)
             }
             .navigationTitle("PrisonMacro")
             .navigationBarTitleDisplayMode(.inline)
@@ -156,8 +156,6 @@ struct ContentView: View {
                     document = MacroFileDocument(data: (try? MacroJSON.encoder.encode(project)) ?? Data()); showingExporter = true
                 } label: { Label("Exportar", systemImage: "square.and.arrow.up") }.buttonStyle(.borderedProminent)
             }
-            Text("El mismo JSON conserva nombres, descripciones, esperas, acciones y capturas para abrirlo en Android o iPhone.")
-                .font(.footnote).foregroundStyle(.secondary)
         }
     }
 
@@ -437,13 +435,33 @@ private struct ActionEditorCard: View {
     let onDuplicate: () -> Void
     let onDelete: () -> Void
 
+    @State private var expanded = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("\(number)").font(.title3.weight(.bold)).foregroundStyle(.tint)
-                VStack(alignment: .leading) { Text(kindLabel(action.kind)).font(.headline); Text("Paso editable y sincronizable").font(.caption).foregroundStyle(.secondary) }
-                Spacer(); Toggle("Activo", isOn: $action.enabled).labelsHidden()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(action.name.isEmpty ? kindLabel(action.kind) : action.name).font(.headline).lineLimit(1)
+                    Text("\(kindLabel(action.kind)) · \(readableActionSummary(action))").font(.caption).foregroundStyle(stepNeedsImage ? .red : .secondary).lineLimit(2)
+                }
+                Spacer()
+                Toggle("Activo", isOn: $action.enabled).labelsHidden()
+                Image(systemName: expanded ? "chevron.up" : "chevron.down").foregroundStyle(.secondary)
             }
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() } }
+            .opacity(action.enabled ? 1 : 0.5)
+            if expanded { details }
+        }
+        .padding(12).background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var stepNeedsImage: Bool {
+        [.CLICK_IMAGE, .WAIT_IMAGE, .IF_IMAGE].contains(action.kind) && !templates.contains(where: { $0.id == action.templateId })
+    }
+
+    @ViewBuilder private var details: some View {
             TextField("Nombre del paso", text: $action.name).textFieldStyle(.roundedBorder)
             TextField("Descripción para no liarte (opcional)", text: $action.description, axis: .vertical).textFieldStyle(.roundedBorder)
             if action.kind == .IF_IMAGE || action.kind == .CLICK_IMAGE || action.kind == .WAIT_IMAGE { ImageActionEditor(action: $action, templates: templates, images: images) }
@@ -458,14 +476,12 @@ private struct ActionEditorCard: View {
                 Button("Duplicar", action: onDuplicate).buttonStyle(.bordered); Spacer()
                 Button("Borrar", role: .destructive, action: onDelete).buttonStyle(.bordered)
             }
-        }
-        .padding(12).background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
     }
 
     @ViewBuilder private var actionDetails: some View {
         switch action.kind {
         case .WAIT, .WAIT_IMAGE, .CLOSE_ACTIVE:
-            IntegerField(title: action.kind == .WAIT_IMAGE ? "Tiempo máximo esperando la imagen (ms)" : action.kind == .WAIT ? "Duración de espera (ms)" : "Espera para mostrar Recientes (ms)", value: $action.durationMs, minimum: action.kind == .WAIT_IMAGE ? 1_000 : action.kind == .WAIT ? 1 : 500, maximum: action.kind == .WAIT || action.kind == .WAIT_IMAGE ? 600_000 : 3_000)
+            SecondsField(title: action.kind == .WAIT_IMAGE ? "Esperar la imagen como máximo (s)" : action.kind == .WAIT ? "Esperar (s)" : "Pausa para mostrar Recientes (s)", value: $action.durationMs, minimum: action.kind == .WAIT_IMAGE ? 1_000 : action.kind == .WAIT ? 1 : 500, maximum: action.kind == .WAIT || action.kind == .WAIT_IMAGE ? 600_000 : 3_000)
         case .REPEAT:
             IntegerField(title: "Repeticiones", value: Binding(get: { Int64(action.count) }, set: { action.count = Int($0) }), minimum: 1, maximum: 100)
         case .GESTURE: GestureEditor(action: $action)
@@ -588,7 +604,7 @@ private struct GestureEditor: View {
                 }
                 if action.points.count > 1 { Text("Trayectoria guardada: \(action.points.count) puntos. El trazado completo se conserva en el JSON.").font(.caption).foregroundStyle(.secondary) }
             }
-            IntegerField(title: "Duración (ms)", value: $action.durationMs, minimum: 1, maximum: 60_000)
+            SecondsField(title: "Duración del toque o deslizamiento (s)", value: $action.durationMs, minimum: 1, maximum: 60_000)
             Text("Para obtener el punto exacto sin escribirlo, abre esta misma acción en Android y pulsa «Elegir X/Y tocando la pantalla».").font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -641,7 +657,7 @@ private struct BranchActionRow: View {
             TextField("Descripción", text: $action.description).font(.caption)
             if action.kind == .IF_IMAGE || action.kind == .CLICK_IMAGE || action.kind == .WAIT_IMAGE { ImageActionEditor(action: $action, templates: templates, images: images) }
             else if action.kind == .GESTURE { GestureEditor(action: $action) }
-            else if action.kind == .WAIT || action.kind == .WAIT_IMAGE || action.kind == .CLOSE_ACTIVE { IntegerField(title: action.kind == .WAIT_IMAGE ? "Tiempo máximo esperando la imagen (ms)" : action.kind == .WAIT ? "Duración de espera (ms)" : "Espera para mostrar Recientes (ms)", value: $action.durationMs, minimum: action.kind == .WAIT_IMAGE ? 1_000 : action.kind == .WAIT ? 1 : 500, maximum: action.kind == .WAIT || action.kind == .WAIT_IMAGE ? 600_000 : 3_000) }
+            else if action.kind == .WAIT || action.kind == .WAIT_IMAGE || action.kind == .CLOSE_ACTIVE { SecondsField(title: action.kind == .WAIT_IMAGE ? "Esperar la imagen como máximo (s)" : action.kind == .WAIT ? "Esperar (s)" : "Pausa para mostrar Recientes (s)", value: $action.durationMs, minimum: action.kind == .WAIT_IMAGE ? 1_000 : action.kind == .WAIT ? 1 : 500, maximum: action.kind == .WAIT || action.kind == .WAIT_IMAGE ? 600_000 : 3_000) }
             else if action.kind == .REPEAT { IntegerField(title: "Repeticiones", value: Binding(get: { Int64(action.count) }, set: { action.count = Int($0) }), minimum: 1, maximum: 100) }
             else if action.kind == .OPEN_APP { TextField("Paquete", text: $action.packageName).textFieldStyle(.roundedBorder) }
             else if action.kind == .IF_COLOR { ColorActionEditor(action: $action) }
@@ -709,7 +725,7 @@ private struct MacroRunSettings: View {
             if project.repeatCount != 0 {
                 Stepper("Vueltas: \(project.repeatCount)", value: $project.repeatCount, in: 1...1000)
             }
-            IntegerField(title: "Pausa entre vueltas (ms)", value: $project.intervalMs, minimum: 0, maximum: 86_400_000)
+            SecondsField(title: "Pausa entre vueltas (s)", value: $project.intervalMs, minimum: 0, maximum: 3_600_000)
             Stepper("Parar sola a los \(project.maxMinutes == 0 ? "— (nunca)" : "\(project.maxMinutes) min")", value: $project.maxMinutes, in: 0...1440, step: 5)
             Text(project.startOnImage ? "Empieza cuando se vea su imagen de inicio (se cambia en Android)." : "Empieza al pulsar ▶ en Android.")
                 .font(.footnote).foregroundStyle(.secondary)
@@ -726,9 +742,46 @@ private struct IntegerField: View {
     @State private var text: String
     init(title: String, value: Binding<Int64>, minimum: Int64, maximum: Int64) { self.title = title; _value = value; self.minimum = minimum; self.maximum = maximum; _text = State(initialValue: String(value.wrappedValue)) }
     var body: some View {
-        TextField(title, text: $text).keyboardType(.numberPad).textFieldStyle(.roundedBorder).onSubmit(commit).onChange(of: value) { text = String($0) }.onChange(of: text) { input in if let parsed = Int64(input), parsed >= minimum, parsed <= maximum { value = parsed } }
+        LabeledField(title: title) { TextField(title, text: $text).keyboardType(.numberPad).textFieldStyle(.roundedBorder).onSubmit(commit).onChange(of: value) { text = String($0) }.onChange(of: text) { input in if let parsed = Int64(input), parsed >= minimum, parsed <= maximum { value = parsed } } }
     }
     private func commit() { text = String(value) }
+}
+
+/// Nombre del campo siempre visible encima (el texto de ayuda de iOS desaparece al escribir).
+private struct LabeledField<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) { Text(title).font(.caption).foregroundStyle(.secondary); content }
+    }
+}
+
+/// Acepta "1,5" o "1.5".
+private func parseDecimal(_ text: String) -> Double? {
+    Double(text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")).flatMap { $0.isFinite ? $0 : nil }
+}
+
+private func secondsText(_ ms: Int64) -> String {
+    ms % 1000 == 0 ? String(ms / 1000) : String(format: "%.1f", Double(ms) / 1000).replacingOccurrences(of: ".", with: ",")
+}
+
+/// Tiempo en segundos para la persona; se guarda en milisegundos como en Android.
+private struct SecondsField: View {
+    let title: String
+    @Binding var value: Int64
+    let minimum: Int64
+    let maximum: Int64
+    @State private var text: String
+    init(title: String, value: Binding<Int64>, minimum: Int64, maximum: Int64) { self.title = title; _value = value; self.minimum = minimum; self.maximum = maximum; _text = State(initialValue: secondsText(value.wrappedValue)) }
+    var body: some View {
+        LabeledField(title: title) {
+            TextField(title, text: $text).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
+                .onSubmit { text = secondsText(value) }
+                .onChange(of: value) { if parsed(text) != $0 { text = secondsText($0) } }
+                .onChange(of: text) { if let ms = parsed($0), ms >= minimum, ms <= maximum { value = ms } }
+        }
+    }
+    private func parsed(_ input: String) -> Int64? { parseDecimal(input).flatMap { $0 >= 0 && $0 < 1e9 ? Int64(($0 * 1000).rounded()) : nil } }
 }
 
 private struct DecimalField: View {
@@ -737,7 +790,7 @@ private struct DecimalField: View {
     @State private var text: String
     init(title: String, value: Binding<Float>) { self.title = title; _value = value; _text = State(initialValue: String(format: "%.2f", value.wrappedValue)) }
     var body: some View {
-        TextField(title, text: $text).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onSubmit { if let parsed = Float(text) { value = parsed } }.onChange(of: value) { text = String(format: "%.2f", $0) }.onChange(of: text) { if let parsed = Float($0) { value = parsed } }
+        LabeledField(title: title) { TextField(title, text: $text).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onSubmit { if let parsed = parseDecimal(text) { value = Float(parsed) } }.onChange(of: value) { text = String(format: "%.2f", $0) }.onChange(of: text) { if let parsed = parseDecimal($0) { value = Float(parsed) } } }
     }
 }
 
@@ -805,11 +858,15 @@ private func branchSummary(_ actions: [MacroAction], empty: String) -> String {
 private func readableActionSummary(_ action: MacroAction) -> String {
     switch action.kind {
     case .WAIT: return "esperar \(readableDuration(action.durationMs))"
-    case .WAIT_IMAGE: return action.skipIfMissing ? "esperar imagen (si no, sigue)" : "esperar hasta ver imagen"
-    case .OPEN_APP: return "abrir aplicación"
+    case .WAIT_IMAGE: return "espera la imagen (máx. \(readableDuration(action.durationMs)))" + (action.skipIfMissing ? " · si no, sigue" : "")
+    case .OPEN_APP: return "abrir \(action.packageName)"
     case .CLOSE_ACTIVE: return "cerrar aplicación"
-    case .GESTURE: return action.points.count <= 1 ? "pulsar" : "hacer trayectoria"
-    case .CLICK_IMAGE: return action.skipIfMissing ? "clic en imagen (si no, sigue)" : "clic en imagen"
+    case .GESTURE:
+        let p = action.points
+        if p.count <= 1 { return "toca en X \(Int((p.first?.x ?? 0.5) * 100)) % · Y \(Int((p.first?.y ?? 0.5) * 100)) %" }
+        if p.count == 2 { return "desliza de (\(Int(p[0].x * 100)) %, \(Int(p[0].y * 100)) %) a (\(Int(p[1].x * 100)) %, \(Int(p[1].y * 100)) %)" }
+        return "trayectoria de \(p.count) puntos"
+    case .CLICK_IMAGE: return "toca la imagen" + (action.waitMs > 0 ? " (busca \(readableDuration(action.waitMs)))" : "") + (action.skipIfMissing ? " · si no está, sigue" : "")
     case .IF_IMAGE: return "comprobar imagen"
     case .IF_COLOR: return "comprobar color"
     case .REPEAT: return "repetir \(action.count) veces"
@@ -822,9 +879,10 @@ private func readableActionSummary(_ action: MacroAction) -> String {
 }
 
 private func readableDuration(_ milliseconds: Int64) -> String {
+    if milliseconds < 1_000 { return "\(milliseconds) ms" }
     if milliseconds % 60_000 == 0 { return "\(milliseconds / 60_000) min" }
-    if milliseconds % 1_000 == 0 { return "\(milliseconds / 1_000) s" }
-    return "\(milliseconds) ms"
+    if milliseconds < 60_000 { return secondsText(milliseconds) + " s" }
+    return "\(milliseconds / 60_000) min \((milliseconds % 60_000) / 1_000) s"
 }
 
 private func projectExecutionIssues(_ project: MacroProject) -> [String] {
