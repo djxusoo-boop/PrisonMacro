@@ -122,9 +122,10 @@ fun actionSummary(a: Action, p: Project): String {
     fun pct(v: Float) = "${(v * 100).roundToInt()} %"
     return when (a.kind) {
         Kind.GESTURE -> if (a.points.size <= 1) "Toca en X ${pct(a.points.first().x)} · Y ${pct(a.points.first().y)}" + if (a.durationMs >= 500) " · ${readableDuration(a.durationMs)}" else ""
-            else "Desliza ${a.points.size} puntos en ${readableDuration(a.durationMs)}"
-        Kind.CLICK_IMAGE -> image?.let { "Toca «${it.name}» ${clickTargetLabel(a.clickTarget)} · ${clickStyleLabel(a.clickStyle)}" } ?: "⚠ Falta elegir la imagen"
-        Kind.WAIT_IMAGE -> image?.let { "Espera a ver «${it.name}» (máx. ${readableDuration(a.durationMs)})" } ?: "⚠ Falta elegir la imagen"
+            else if (a.points.size == 2) "Desliza de ${pct(a.points[0].x)}, ${pct(a.points[0].y)} a ${pct(a.points[1].x)}, ${pct(a.points[1].y)} en ${readableDuration(a.durationMs)}"
+            else "Trayectoria grabada de ${a.points.size} puntos en ${readableDuration(a.durationMs)}"
+        Kind.CLICK_IMAGE -> image?.let { "Toca «${it.name}» ${clickTargetLabel(a.clickTarget)} · ${clickStyleLabel(a.clickStyle)}" + if (a.skipIfMissing) " · si no está, sigue" else "" } ?: "⚠ Falta elegir la imagen"
+        Kind.WAIT_IMAGE -> image?.let { "Espera a ver «${it.name}» (máx. ${readableDuration(a.durationMs)})" + if (a.skipIfMissing) " · si no, sigue" else "" } ?: "⚠ Falta elegir la imagen"
         Kind.IF_IMAGE -> image?.let { "Si se ve «${it.name}»" } ?: "⚠ Falta elegir la imagen"
         Kind.IF_COLOR -> "Si se ve ${rgbHex(a.targetColor)} (tolerancia ${a.colorTolerance})"
         Kind.WAIT -> readableDuration(a.durationMs)

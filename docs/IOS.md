@@ -1,5 +1,7 @@
 # PrisonMacro para iPhone · 0.3.18
 
+> **Cambio de Android 0.5.0 (6 nov 2026):** el modelo del iPhone conserva ahora `repeatCount`, `startOnImage`, `maxMinutes`, `skipIfMissing` y `waitMs`, que antes se perdían al guardar; y «Importar» acepta la copia de seguridad completa de Android (añade todas sus macros con sus capturas). Compilado para el simulador (`BUILD SUCCEEDED`); no se ha instalado en el iPhone. El resto de este documento describe la 0.3.18.
+
 La versión 0.3.18 mantiene el logo de Prison en la cabecera y como icono, varios proyectos locales, comprobación previa de errores y edición completa de pasos anidados. Cada acción de imagen muestra su miniatura y permite elegir otra captura guardada, volver a recortarla y conservar su asociación al exportar. La compilación para dispositivo se comprobó en `ios/build/ConnectedDeviceDerivedData/Build/Products/Debug-iphoneos/PrisonMacro.app` y se instaló y abrió en el iPhone 13 conectado con la firma de tu Team Apple.
 
 ## Qué hace esta primera versión

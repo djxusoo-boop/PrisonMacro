@@ -318,10 +318,26 @@ struct ContentView: View {
         }
         let scoped = url.startAccessingSecurityScopedResource(); defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         do {
-            let value = try MacroJSON.decoder.decode(MacroProject.self, from: Data(contentsOf: url))
+            let data = try Data(contentsOf: url)
+            // Una copia de seguridad completa de Android trae todas las macros
+            // con sus capturas: se añaden todas (reemplazando las del mismo id).
+            if let backup = try? MacroJSON.decoder.decode(MacroBackup.self, from: data) {
+                let valid = backup.projects.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                guard let first = valid.first else { throw ImportError.invalidProject }
+                var updated = localProjects
+                for item in valid {
+                    if let index = updated.firstIndex(where: { $0.id == item.id }) { updated[index] = item } else { updated.append(item) }
+                }
+                localProjects = updated
+                project = updated.first(where: { $0.id == first.id }) ?? first
+                LocalProjectStore.save(active: project, projects: updated)
+                alert = "Copia de seguridad importada: \(valid.count) macro(s) con sus capturas"
+                return
+            }
+            let value = try MacroJSON.decoder.decode(MacroProject.self, from: data)
             guard !value.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ImportError.invalidProject }
             project = value
-        } catch { alert = "El JSON no es una macro válida: \(error.localizedDescription)" }
+        } catch { alert = "El JSON no es una macro ni una copia de seguridad válida: \(error.localizedDescription)" }
     }
 
     private func importImage(_ result: Result<URL, Error>) {

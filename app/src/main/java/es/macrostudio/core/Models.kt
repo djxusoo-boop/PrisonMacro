@@ -36,7 +36,11 @@ data class Action(
     val colorTolerance: Int = 24,
     val colorMode: SearchMode = SearchMode.ANYWHERE,
     val colorX: Float = .5f,
-    val colorY: Float = .5f
+    val colorY: Float = .5f,
+    /** Buscar imagen / esperar imagen: si no aparece a tiempo, sigue con el siguiente paso en vez de parar. */
+    val skipIfMissing: Boolean = false,
+    /** Buscar imagen y tocarla: tiempo máximo buscando (0 = el de la macro). */
+    val waitMs: Long = 0
 ) {
     fun duplicate(): Action = copy(id = UUID.randomUUID().toString(), children = children.map { it.duplicate() }, otherwise = otherwise.map { it.duplicate() })
 }
@@ -52,8 +56,10 @@ data class Project(
     val intervalMs: Long = 0,
     val timeoutMs: Long = 60_000,
     val maxRuns: Int = 10,
-    /** Veces que se ejecuta la macro completa cada vez que se pulsa ▶. */
+    /** Veces que se ejecuta la macro completa cada vez que se pulsa ▶ (0 = sin fin). */
     val repeatCount: Int = 1,
+    /** Parada automática de seguridad, en minutos (0 = nunca). */
+    val maxMinutes: Int = 30,
     /** true: la macro espera a ver [template] antes de cada repetición. */
     val startOnImage: Boolean = false,
     val templates: List<SavedTemplate> = emptyList(),
@@ -67,13 +73,13 @@ data class Project(
                 it.x.toLong()+it.width <= it.screenWidth && it.y.toLong()+it.height <= it.screenHeight
         if (name.isBlank() || name.length > 100) return "El nombre debe tener entre 1 y 100 caracteres"
         if (!threshold.isFinite() || threshold !in .7..1.0) return "Similitud fuera de rango"
-        if (delayMs !in 0..600_000 || intervalMs !in 0..3_600_000 || timeoutMs !in 1000..3_600_000 || maxRuns !in 1..1000 || repeatCount !in 1..1000) return "Tiempos o límite de ejecuciones no válidos"
+        if (delayMs !in 0..600_000 || intervalMs !in 0..3_600_000 || timeoutMs !in 1000..3_600_000 || maxRuns !in 1..1000 || repeatCount !in 0..1000 || maxMinutes !in 0..1440) return "Tiempos o límite de ejecuciones no válidos"
         template?.let { if(!validTemplate(it)) return "Recorte fuera de la pantalla o nombre de imagen inválido" }
         if(templates.size>100 || templates.map { it.id }.toSet().size!=templates.size || templates.any { it.id.isBlank() || it.id.length>60 || it.name.isBlank() || it.name.length>100 || !validTemplate(it.template) }) return "Biblioteca de imágenes no válida"
         var total = 0
         val ids=HashSet<String>()
         fun check(items: List<Action>, depth: Int): Boolean = depth <= 8 && items.all { a ->
-            ++total <= 500 && ids.add(a.id) && a.id.isNotBlank() && a.name.length <= 100 && a.description.length <= 500 && a.durationMs in 1..600_000 && (a.kind!=Kind.WAIT_IMAGE || a.durationMs in 1_000..600_000) && a.count in 1..100 &&
+            ++total <= 500 && ids.add(a.id) && a.id.isNotBlank() && a.name.length <= 100 && a.description.length <= 500 && a.durationMs in 1..600_000 && (a.kind!=Kind.WAIT_IMAGE || a.durationMs in 1_000..600_000) && a.count in 1..100 && a.waitMs in 0..3_600_000 &&
                 (a.kind!=Kind.CLOSE_ACTIVE || a.durationMs in 500..3_000) &&
                 (a.kind!=Kind.OPEN_APP || (a.packageName.length<=255 && a.packageName.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")))) &&
                 (a.kind!=Kind.CLICK_IMAGE || (a.clickOffsetX.isFinite() && a.clickOffsetY.isFinite() &&
@@ -192,3 +198,7 @@ fun duplicateAfter(items: List<Action>, id: String): List<Action> {
     if (index >= 0) return items.toMutableList().apply { add(index + 1, this[index].duplicate()) }
     return items.map { it.copy(children = duplicateAfter(it.children,id), otherwise = duplicateAfter(it.otherwise,id)) }
 }
+
+/** Paso al que hay que volver tras una captura pedida para [target]
+ * (un paso, "color:" + paso, o la imagen de inicio, que no es un paso). */
+fun stepOfCaptureTarget(target: String?): String? = target?.removePrefix("color:")?.takeIf { it != "__inicio__" }

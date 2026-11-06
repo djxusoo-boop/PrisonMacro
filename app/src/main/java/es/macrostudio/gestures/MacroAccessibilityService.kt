@@ -30,9 +30,13 @@ class MacroAccessibilityService: AccessibilityService() {
     private val gestureThread=HandlerThread("PrisonMacroGestures").apply { start() }
     private val gestureHandler=Handler(gestureThread.looper)
     private lateinit var wm: WindowManager
+    private var statusView: TextView?=null
     private var bar: LinearLayout?=null; private var recorder: View?=null; private var pointPicker: View?=null
     private var recordWidth=0; private var recordHeight=0; private var lastEnd=0L
     private var recordGeneration=0
+    /** Grabación: true cuando el siguiente toque se va a grabar. Mientras se
+     * reproduce el toque anterior, los toques pasan al juego sin grabarse. */
+    private var recordArmed=false; private var recordedCount=0
     private fun dp(value: Int)=(value*resources.displayMetrics.density).toInt()
     override fun onServiceConnected() { Studio.init(this); instance=this; wm=getSystemService(WindowManager::class.java); Studio.accessibilityReady=true; if(!Studio.running && !Studio.recording) Studio.status="Accesibilidad conectada"; Studio.log("Accesibilidad conectada") }
     override fun onAccessibilityEvent(event: android.view.accessibility.AccessibilityEvent?) = Unit
@@ -87,11 +91,18 @@ class MacroAccessibilityService: AccessibilityService() {
         refreshBar()
     }
 
+    /** Texto pequeño del panel: paso en curso, vuelta o estado de la grabación. */
+    fun showStatus(text: String) {
+        if(Looper.myLooper()!=Looper.getMainLooper()) { main.post { showStatus(text) }; return }
+        statusView?.let { it.text=text; it.visibility=if(text.isBlank()) View.GONE else View.VISIBLE }
+    }
+
     fun refreshBar() {
         if(Looper.myLooper()!=Looper.getMainLooper()) { main.post { refreshBar() }; return }
         val row=bar ?: return
         row.removeAllViews()
         row.addView(dragHandle(row))
+        statusView=null
         fun button(label: String, description: String, color: Int=Color.rgb(44,56,80), enabled: Boolean=true, widthDp: Int=52, block: ()->Unit) {
             row.addView(Button(this).apply {
                 text=label; isAllCaps=false; textSize=15f; minimumWidth=0; minWidth=0; minimumHeight=0; minHeight=0
@@ -104,10 +115,11 @@ class MacroAccessibilityService: AccessibilityService() {
         when {
             barMode==BarMode.CAPTURE -> {
                 button("📷 Capturar","Capturar pantalla",Color.rgb(20,120,110),widthDp=118) { capture() }
-                button("✕","Cancelar captura") { Studio.pendingTemplateActionId?.let { if(it!=Studio.START_IMAGE_TARGET) Studio.reopenActionId=it }; Studio.pendingTemplateActionId=null; openApp() }
+                button("✕","Cancelar captura") { Studio.stepOfTarget(Studio.pendingTemplateActionId)?.let { Studio.reopenActionId=it }; Studio.pendingTemplateActionId=null; openApp() }
             }
             Studio.recording -> {
                 button("■ Terminar grabación","Terminar grabación",Color.rgb(170,40,60),widthDp=170) { stopRecording(); Studio.requestedScreen="editor"; openApp() }
+                addStatus(row,if(recordArmed) "● Toca para grabar · $recordedCount" else "⏳ Espera…")
             }
             else -> {
                 val running=Studio.running
@@ -119,8 +131,18 @@ class MacroAccessibilityService: AccessibilityService() {
                 button("📷","Capturar imagen",enabled=!running) { barMode=BarMode.CAPTURE; Studio.pendingTemplateActionId=null; capture() }
                 button("⌂","Abrir PrisonMacro") { stopPointPicker(); Engine.stop(); openApp() }
                 button("✕","Ocultar panel") { hideBar() }
+                if(running) addStatus(row,Studio.status)
             }
         }
+    }
+
+    private fun addStatus(row: LinearLayout, text: String) {
+        val view=TextView(this).apply {
+            this.text=text; textSize=12f; setTextColor(Color.rgb(200,225,230)); maxLines=2; maxWidth=dp(150)
+            ellipsize=android.text.TextUtils.TruncateAt.END; setPadding(dp(6),0,dp(4),0)
+        }
+        statusView=view
+        row.addView(view,LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,LinearLayout.LayoutParams.WRAP_CONTENT))
     }
 
     private fun dragHandle(row: LinearLayout): View = TextView(this).apply {
@@ -148,7 +170,7 @@ class MacroAccessibilityService: AccessibilityService() {
 
     private fun capture() {
         val service=CaptureService.instance ?: run {
-            Studio.fail("Falta autorizar la captura de pantalla"); Toast.makeText(this,"Primero autoriza la captura de pantalla desde PrisonMacro",Toast.LENGTH_LONG).show(); openApp(); return
+            Studio.fail("Primero autoriza la captura de pantalla desde PrisonMacro"); openApp(); return
         }
         bar?.visibility=View.INVISIBLE
         main.postDelayed({ service.saveScreenshot { success ->
@@ -287,22 +309,35 @@ class MacroAccessibilityService: AccessibilityService() {
      * editor, para que elegir una coordenada no dispare por accidente un botón
      * del juego o de otra aplicación.
      */
-    fun startPointPicker(actionId: String) {
+    fun startPointPicker(actionId: String, swipe: Boolean=false) {
         if(Studio.running) { Studio.fail("Detén la macro antes de elegir un punto"); return }
         if(Studio.recording || recorder!=null || pointPicker!=null) return
         val action=findAction(Studio.project.actions,actionId)
         if(action==null) { Studio.fail("La acción ya no existe"); return }
         val (w,h)=screenSize()
         if(w<2 || h<2) { Studio.fail("No se pudo leer el tamaño de la pantalla"); return }
-        Toast.makeText(this,"Toca una vez el punto que quieres guardar",Toast.LENGTH_LONG).show()
-        val overlay=View(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        val help=if(swipe) "Arrastra el dedo desde donde empieza hasta donde acaba el deslizamiento" else "Toca una vez el punto que quieres guardar"
+        // Capa tenue con instrucciones: así se ve que el toque no llega al juego.
+        val overlay=FrameLayout(this).apply {
+            setBackgroundColor(Color.argb(40,109,226,209))
+            addView(TextView(this@MacroAccessibilityService).apply {
+                text="👆 $help"; textSize=15f; setTextColor(Color.WHITE); setPadding(dp(14),dp(8),dp(14),dp(8))
+                background=android.graphics.drawable.GradientDrawable().apply { setColor(Color.argb(210,23,31,48)); cornerRadius=dp(12).toFloat() }
+            },FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,FrameLayout.LayoutParams.WRAP_CONTENT,Gravity.CENTER_HORIZONTAL or Gravity.TOP).apply { topMargin=dp(40) })
+        }
+        var downPoint: Point?=null
         overlay.setOnTouchListener { _, event ->
+            if(event.actionMasked==MotionEvent.ACTION_DOWN) downPoint=normalizedScreenPoint(event.rawX,event.rawY,w,h)
             if(event.actionMasked==MotionEvent.ACTION_UP) {
                 val currentSize=screenSize()
                 if(currentSize!=Pair(w,h)) {
                     stopPointPicker(); Studio.fail("Cambió la orientación; vuelve a elegir el punto"); return@setOnTouchListener true
                 }
                 val point=normalizedScreenPoint(event.rawX,event.rawY,w,h)
+                val start=downPoint ?: point
+                if(swipe && abs(start.x-point.x)<.02f && abs(start.y-point.y)<.02f) {
+                    Toast.makeText(this,"Ha sido un toque: arrastra el dedo para marcar el deslizamiento",Toast.LENGTH_SHORT).show(); return@setOnTouchListener true
+                }
                 val updated=updateAction(Studio.project.actions,actionId) { current ->
                     when(current.kind) {
                         Kind.CLICK_IMAGE -> current.copy(
@@ -310,14 +345,14 @@ class MacroAccessibilityService: AccessibilityService() {
                             clickOffsetX=point.x*100f,
                             clickOffsetY=point.y*100f
                         )
-                        Kind.GESTURE -> current.copy(points=listOf(point))
+                        Kind.GESTURE -> current.copy(points=if(swipe) listOf(start,point) else listOf(point), durationMs=if(swipe && current.durationMs<150) 300 else current.durationMs)
                         else -> current
                     }
                 }
                 val saved=Studio.update(Studio.project.copy(actions=updated))
                 stopPointPicker()
                 if(saved) {
-                    val percent="${(point.x*100).toInt()} %, ${(point.y*100).toInt()} %"
+                    val percent=(if(swipe) "${(start.x*100).toInt()} %, ${(start.y*100).toInt()} % → " else "")+"${(point.x*100).toInt()} %, ${(point.y*100).toInt()} %"
                     Studio.status="Punto guardado: $percent"
                     Studio.log("Punto capturado para ${action.name}: $percent")
                     Toast.makeText(this,"Punto guardado: $percent",Toast.LENGTH_SHORT).show()
@@ -359,7 +394,8 @@ class MacroAccessibilityService: AccessibilityService() {
 
         val generation=++recordGeneration; lastEnd=SystemClock.elapsedRealtime()
         val points=ArrayList<Point>(); var downAt=0L; var gap=0L
-        val overlay=View(this).apply { setBackgroundColor(Color.argb(12,255,70,100)) }
+        val overlay=View(this).apply { setBackgroundColor(Color.argb(28,255,70,100)) }
+        recordArmed=true; recordedCount=0
         fun setRecordingTouchable(enabled: Boolean): Boolean {
             val layout=params(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT)
             if(!enabled) layout.flags=layout.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
@@ -384,6 +420,7 @@ class MacroAccessibilityService: AccessibilityService() {
                         // Deja la ventana puesta, pero sin tocar, para que el gesto
                         // reproducido llegue a la aplicación que estaba debajo.
                         if(!setRecordingTouchable(false)) Studio.fail("No se pudo liberar la pantalla para reproducir el gesto")
+                        recordArmed=false; showStatus("⏳ Espera…"); overlay.setBackgroundColor(Color.TRANSPARENT)
                         main.postDelayed({ if(generation==recordGeneration) perform(action) { success ->
                             // Android puede avisar de que la inyección terminó antes de
                             // que la aplicación destino procese el UP.
@@ -391,11 +428,12 @@ class MacroAccessibilityService: AccessibilityService() {
                             if(generation==recordGeneration) {
                                 if(success) {
                                     val wait=if(gap>=200) listOf(Action(kind=Kind.WAIT,name="Espera grabada",durationMs=gap.coerceAtMost(600_000))) else emptyList()
-                                    if(Studio.update(Studio.project.copy(actions=Studio.project.actions+wait+action))) Studio.log("Gesto grabado (${duration} ms)") else stopRecording()
+                                    if(Studio.update(Studio.project.copy(actions=Studio.project.actions+wait+action))) { recordedCount++; Studio.log("Gesto grabado (${duration} ms)") } else stopRecording()
                                 } else Studio.fail("No se grabó el gesto: Android lo rechazó")
                                 lastEnd=SystemClock.elapsedRealtime()
-                                if(generation==recordGeneration && recorder===overlay && Studio.recording && !setRecordingTouchable(true)) {
-                                    stopRecording(); Studio.fail("No se pudo reanudar la grabación")
+                                if(generation==recordGeneration && recorder===overlay && Studio.recording) {
+                                    if(!setRecordingTouchable(true)) { stopRecording(); Studio.fail("No se pudo reanudar la grabación") }
+                                    else { recordArmed=true; overlay.setBackgroundColor(Color.argb(28,255,70,100)); showStatus("● Toca para grabar · $recordedCount") }
                                 }
                             }
                             // En emuladores y dispositivos cargados el clic puede

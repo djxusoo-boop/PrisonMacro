@@ -62,7 +62,8 @@ import java.util.UUID
     }
     renaming?.let { p -> NameDialog("Cambiar nombre", p.name, "Guardar", onDismiss = { renaming = null }) { name ->
         renaming = null
-        if (p.id == Studio.project.id) Studio.update(Studio.project.copy(name = name)) else Studio.saveAll(listOf(p.copy(name = name)))
+        if (p.id == Studio.project.id) Studio.update(Studio.project.copy(name = name))
+        else runCatching { Studio.saveAll(listOf(p.copy(name = name))) }.onFailure { Studio.fail("No se pudo cambiar el nombre: ${it.message}") }
     } }
     deleting?.let { p -> AlertDialog(
         onDismissRequest = { deleting = null },
@@ -87,7 +88,7 @@ import java.util.UUID
                 Text(p.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     "${countActions(p.actions)} paso(s) · ${p.templates.size} imagen(es)" +
-                        (if (p.repeatCount > 1) " · ×${p.repeatCount}" else "") +
+                        (if (p.repeatCount == 0) " · sin fin" else if (p.repeatCount > 1) " · ×${p.repeatCount}" else "") +
                         (if (p.startOnImage) " · empieza al ver imagen" else ""),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -102,7 +103,8 @@ import java.util.UUID
                     DropdownMenuItem(text = { Text("🏷  Cambiar nombre") }, onClick = { menu = false; onRename() })
                     DropdownMenuItem(text = { Text("⧉  Duplicar") }, onClick = {
                         menu = false
-                        Studio.saveAll(listOf(p.copy(id = UUID.randomUUID().toString(), name = (p.name + " (copia)").take(100))))
+                        runCatching { Studio.saveAll(listOf(p.copy(id = UUID.randomUUID().toString(), name = (p.name + " (copia)").take(100)))) }
+                            .onSuccess { c.toast("Macro duplicada") }.onFailure { Studio.fail("No se pudo duplicar: ${it.message}") }
                     })
                     DropdownMenuItem(text = { Text("📤  Exportar / compartir") }, onClick = { menu = false; c.exportProject(p) })
                     HorizontalDivider()

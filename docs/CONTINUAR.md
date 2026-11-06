@@ -1,3 +1,5 @@
+> **0.5.0 (6 nov 2026):** repetición sin fin y parada automática configurable; saltar paso si no aparece la imagen; deslizamientos dibujados; color elegido sobre captura; avisos visibles (Toast) y estado en el panel; el iPhone conserva los campos nuevos e importa copias completas. 39 pruebas unitarias y assembleDebug correctos; iOS compila para el simulador. Sin probar en emulador/BlueStacks (adb colgado) y sin lint.
+
 # Continuación del desarrollo
 
 ## 0.4.0 · reorganización de la interfaz (pendiente de probar en dispositivo)

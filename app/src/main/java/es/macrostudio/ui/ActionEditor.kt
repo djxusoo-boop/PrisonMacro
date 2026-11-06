@@ -47,6 +47,13 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
     var colorMode by remember(a.id) { mutableStateOf(a.colorMode) }
     var colorX by remember(a.id) { mutableStateOf(pctText(a.colorX)) }
     var colorY by remember(a.id) { mutableStateOf(pctText(a.colorY)) }
+    var skipIfMissing by remember(a.id) { mutableStateOf(a.skipIfMissing) }
+    var waitSec by remember(a.id) { mutableStateOf(secondsText(if (a.waitMs > 0) a.waitMs else Studio.project.timeoutMs)) }
+    // Toque (1 punto) o deslizamiento (2 puntos). Una trayectoria grabada (>2) se conserva tal cual.
+    val recordedPath = a.kind == Kind.GESTURE && a.points.size > 2
+    var swipe by remember(a.id, a.points) { mutableStateOf(a.points.size == 2) }
+    var x2 by remember(a.id, a.points) { mutableStateOf(pctText(a.points.getOrNull(1)?.x ?: .5f)) }
+    var y2 by remember(a.id, a.points) { mutableStateOf(pctText(a.points.getOrNull(1)?.y ?: .2f)) }
     var picking by remember { mutableStateOf(false) }
     var choosingApp by remember { mutableStateOf(false) }
 
@@ -70,7 +77,10 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
     val color = parseRgbHex(colorHex); val tol = tolerance.toIntOrNull()?.takeIf { it in 0..255 }
     val colX = pct(colorX)?.takeIf { it in 0f..100f }; val colY = pct(colorY)?.takeIf { it in 0f..100f }
     val validColor = a.kind != Kind.IF_COLOR || (color != null && tol != null && (colorMode == SearchMode.ANYWHERE || (colX != null && colY != null)))
-    val validPoint = a.kind != Kind.GESTURE || a.points.size > 1 || (px != null && py != null)
+    val px2 = pct(x2)?.takeIf { it in 0f..100f }; val py2 = pct(y2)?.takeIf { it in 0f..100f }
+    val validPoint = a.kind != Kind.GESTURE || recordedPath || (px != null && py != null && (!swipe || (px2 != null && py2 != null)))
+    val waitMs = parseSeconds(waitSec)?.takeIf { it in 1000..3_600_000 }
+    val validWait = a.kind != Kind.CLICK_IMAGE || waitMs != null
     val validPackage = a.kind != Kind.OPEN_APP || packageName.matches(packageRegex)
     val needsImage = a.kind in imageKinds
     val problems = buildList {
@@ -79,6 +89,7 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
         if (a.kind == Kind.REPEAT && cnt == null) add("Las repeticiones van de 1 a 100")
         if (!validPoint) add("X e Y van de 0 a 100")
         if (!validClick) add("Revisa el punto del toque")
+        if (!validWait) add("El tiempo de búsqueda va de 1 s a 1 h")
         if (!validColor) add("Revisa el color, la tolerancia o el punto")
         if (!validPackage) add("Elige la aplicación")
         if (needsImage && templateId.isBlank()) add("Elige o captura una imagen")
@@ -93,7 +104,14 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
             templateId = templateId,
             durationMs = if (validDuration) d!! else a.durationMs,
             count = cnt ?: a.count,
-            points = if (a.points.size <= 1 && px != null && py != null) listOf(Point(px / 100, py / 100)) else a.points,
+            points = when {
+                a.kind != Kind.GESTURE || recordedPath || px == null || py == null -> a.points
+                swipe && px2 != null && py2 != null -> listOf(Point(px / 100, py / 100), Point(px2 / 100, py2 / 100))
+                swipe -> a.points
+                else -> listOf(Point(px / 100, py / 100))
+            },
+            skipIfMissing = skipIfMissing,
+            waitMs = if (a.kind == Kind.CLICK_IMAGE && waitMs != null) (if (waitMs == Studio.project.timeoutMs) 0 else waitMs) else a.waitMs,
             packageName = if (validPackage && a.kind == Kind.OPEN_APP) packageName else a.packageName,
             clickTarget = if (validClick) clickTarget else a.clickTarget, clickStyle = clickStyle,
             clickOffsetX = if (validClick && clickTarget != ClickTarget.CENTER) cx!! else a.clickOffsetX,
@@ -151,11 +169,15 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
                                 if (it == ClickStyle.LONG && (duration.toLongOrNull() ?: 0) < 500) duration = "800"
                             }
                             if (clickStyle == ClickStyle.LONG) OutlinedTextField(duration, { duration = it.filter(Char::isDigit).take(5) }, label = { Text("Duración de la pulsación (ms, mínimo 500)") }, singleLine = true)
-                            Hint("Busca la imagen durante ${readableDuration(Studio.project.timeoutMs)} como máximo (se cambia en ⚙ Ajustes de la macro). Si no aparece, la macro se detiene.")
+                            SectionTitle("Si la imagen no aparece")
+                            SecondsField("Buscarla durante (segundos)", waitSec, listOf("2", "5", "10", "30", "60")) { waitSec = it }
+                            MissingChoice(skipIfMissing) { skipIfMissing = it }
                         }
                         Kind.WAIT_IMAGE -> {
                             SecondsField("Esperar como máximo (segundos)", duration, listOf("10", "30", "60", "120")) { duration = it }
-                            Hint("Comprueba la pantalla cada 0,7 s. En cuanto aparezca, sigue con el siguiente paso. Si se agota el tiempo, la macro se detiene.")
+                            Hint("Comprueba la pantalla cada 0,7 s. En cuanto aparezca, sigue con el siguiente paso.")
+                            SectionTitle("Si se agota el tiempo")
+                            MissingChoice(skipIfMissing) { skipIfMissing = it }
                         }
                         Kind.IF_IMAGE, Kind.IF_COLOR -> Hint("Después de guardar, añade pasos en «✔ Si se ve» y «✖ Si NO se ve» directamente en la lista.")
                         Kind.REPEAT -> {
@@ -164,7 +186,18 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
                         }
                         Kind.WAIT -> SecondsField("Tiempo de espera (segundos)", duration, listOf("0,5", "1", "2", "5", "10")) { duration = it }
                         Kind.GESTURE -> {
-                            if (a.points.size <= 1) {
+                            if (!recordedPath) ChoiceChips(listOf(false to "👆 Tocar", true to "↕ Deslizar"), swipe) { swipe = it }
+                            if (!recordedPath && swipe) {
+                                SectionTitle("Deslizamiento")
+                                OutlinedButton(onClick = { leaveAnd { c.pickPoint(a.id, swipe = true) } }, modifier = Modifier.fillMaxWidth()) { Text("👆 Dibujarlo arrastrando el dedo en la pantalla") }
+                                Hint("O escribe en % de la pantalla dónde empieza y dónde acaba (0 = arriba/izquierda, 100 = abajo/derecha).")
+                                Text("Desde", style = MaterialTheme.typography.labelLarge)
+                                XYFields(x, y, { x = it }, { y = it })
+                                Text("Hasta", style = MaterialTheme.typography.labelLarge)
+                                XYFields(x2, y2, { x2 = it }, { y2 = it })
+                                OutlinedTextField(duration, { duration = it.filter(Char::isDigit).take(5) }, label = { Text("Duración del deslizamiento (ms)") }, singleLine = true)
+                                Hint("300 ms = deslizamiento rápido · 1000 ms o más = arrastre lento.")
+                            } else if (!recordedPath) {
                                 SectionTitle("Punto de la pantalla")
                                 OutlinedButton(onClick = { leaveAnd { c.pickPoint(a.id) } }, modifier = Modifier.fillMaxWidth()) { Text("👆 Elegir el punto tocando la pantalla") }
                                 Hint("O escríbelo en % de la pantalla: 0 = arriba/izquierda, 100 = abajo/derecha.")
@@ -187,6 +220,10 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
                         }
                         else -> Unit
                     }
+                    if (a.kind == Kind.IF_COLOR) {
+                        Button(onClick = { leaveAnd { c.pickColor(a.id) } }, modifier = Modifier.fillMaxWidth()) { Text("🎯 Elegir el color tocándolo en una captura") }
+                        Hint("Irás a tu juego, pulsarás 📷 Capturar en el panel y tocarás el punto cuyo color quieres detectar. Se guardan el color y su posición.")
+                    }
                     if (a.kind == Kind.IF_COLOR) ColorSection(colorHex, tolerance, colorMode, colorX, colorY, { colorHex = it }, { tolerance = it }, { colorMode = it }, { colorX = it }, { colorY = it })
 
                     OutlinedTextField(description, { description = it.take(500) }, label = { Text("Nota (opcional)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
@@ -203,6 +240,11 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
 }
 
 private fun pctText(v: Float): String { val n = v * 100; return if (n == n.toInt().toFloat()) n.toInt().toString() else String.format(java.util.Locale.ROOT, "%.1f", n) }
+
+@Composable private fun MissingChoice(skip: Boolean, onChange: (Boolean) -> Unit) {
+    ChoiceChips(listOf(false to "■ Parar la macro", true to "⏭ Saltar este paso y seguir"), skip, onSelect = onChange)
+    Hint(if (skip) "Si no aparece, la macro sigue con el siguiente paso." else "Si no aparece, la macro se detiene y te avisa.")
+}
 
 @Composable private fun XYFields(x: String, y: String, onX: (String) -> Unit, onY: (String) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -137,10 +137,13 @@ class AppController(val activity: ComponentActivity, private val scope: Coroutin
         toast("Ve a la pantalla: se comprobará en 2,5 s")
     }
 
-    fun pickPoint(actionId: String) {
+    fun pickPoint(actionId: String, swipe: Boolean = false) {
         val s = accessibility() ?: return
-        s.startPointPicker(actionId); activity.moveTaskToBack(true)
+        s.startPointPicker(actionId, swipe); activity.moveTaskToBack(true)
     }
+
+    /** Captura la pantalla del juego y deja tocar el color que hay que buscar. */
+    fun pickColor(actionId: String) = captureFor(Studio.COLOR_PREFIX + actionId)
 
     // ---------- Archivos y copias de seguridad ----------
 

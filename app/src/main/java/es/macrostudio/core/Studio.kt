@@ -37,6 +37,10 @@ object Studio {
     var reopenActionId by mutableStateOf<String?>(null)
     /** Identificador especial: la captura será la imagen de inicio de la macro. */
     const val START_IMAGE_TARGET = "__inicio__"
+    /** Prefijo de destino: la captura sirve para elegir el color de este paso. */
+    const val COLOR_PREFIX = "color:"
+    /** Paso al que hay que volver tras capturar para [target]. */
+    fun stepOfTarget(target: String?): String? = stepOfCaptureTarget(target)
     /** Pantalla de la app que debe mostrarse al volver ("editor", "images"…). */
     var requestedScreen by mutableStateOf<String?>(null)
     private val undo=ArrayDeque<Project>(); private val redo=ArrayDeque<Project>()
@@ -91,5 +95,10 @@ object Studio {
         logs=(logs+line).takeLast(200)
         if(::context.isInitialized) runCatching { File(context.filesDir,"history.log").writeText(logs.joinToString("\n")) }
     }
-    fun fail(message: String) { status=message; log(message) }
+    /** Error visible: se guarda en el registro y se muestra un aviso, también encima del juego. */
+    fun fail(message: String) {
+        if(Looper.myLooper()!=Looper.getMainLooper()) { main.post { fail(message) }; return }
+        status=message; log(message)
+        if(::context.isInitialized) android.widget.Toast.makeText(context,message,android.widget.Toast.LENGTH_LONG).show()
+    }
 }

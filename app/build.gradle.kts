@@ -6,7 +6,7 @@ plugins {
 }
 
 android { namespace = "es.macrostudio"; compileSdk = 35
-    defaultConfig { applicationId = "es.macrostudio"; minSdk = 26; targetSdk = 35; versionCode = 22; versionName = "0.4.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig { applicationId = "es.macrostudio"; minSdk = 26; targetSdk = 35; versionCode = 23; versionName = "0.5.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }

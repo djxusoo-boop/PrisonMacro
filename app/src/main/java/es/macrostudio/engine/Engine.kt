@@ -17,7 +17,8 @@ object Engine {
     private val main=Handler(Looper.getMainLooper()); private val worker=Executors.newSingleThreadExecutor()
     @Volatile private var generation=0
     private var resume: (() -> Unit)?=null
-    private var steps=0; private var started=0L
+    private var steps=0; private var started=0L; private var limitMs=0L
+    private var round=""
     private var pendingDetection: Runnable?=null
     fun scheduleDetection(delayMs: Long=2000) {
         if(Studio.running || Studio.recording || Studio.detecting) return
@@ -33,7 +34,11 @@ object Engine {
     }
     fun stop(reason: String="Detenido") {
         generation++; resume=null; pendingDetection=null; main.removeCallbacksAndMessages(null)
-        if(Studio.running) Studio.log(reason)
+        if(Studio.running) {
+            Studio.log(reason)
+            // Avisa encima del juego de por qué terminó (antes se paraba sin decir nada).
+            if(reason!="Detenido" && reason!="Parada manual") android.widget.Toast.makeText(Studio.context,(if(reason.startsWith("Completado")) "✓ " else "■ ")+reason,android.widget.Toast.LENGTH_LONG).show()
+        }
         Studio.running=false; Studio.paused=false; Studio.currentAction=""; Studio.status=reason
         MacroAccessibilityService.instance?.refreshBar()
     }
@@ -45,7 +50,7 @@ object Engine {
     }
     private fun later(token: Int, delay: Long=0, action: ()->Unit) {
         main.postDelayed({ if(token==generation && Studio.running) {
-            if(SystemClock.elapsedRealtime()-started > 30*60*1000) stop("Límite de seguridad: 30 minutos")
+            if(limitMs>0 && SystemClock.elapsedRealtime()-started > limitMs) stop("Parada automática: ${limitMs/60_000} min")
             else if(Studio.paused) resume={ later(token,0,action) } else action()
         } },delay)
     }
@@ -64,22 +69,24 @@ object Engine {
         if(triggered && p.template==null) { Studio.fail("Elige la imagen con la que empieza la macro"); return }
         if(!simulation && (triggered || p.copy(actions=actions).needsScreenCapture()) && !Studio.captureReady) { Studio.fail("Autoriza la captura de pantalla: esta macro busca imágenes o colores"); return }
         if(actions.none { it.enabled }) { Studio.fail("Añade al menos una acción activa"); return }
-        stop(); val token=generation; steps=0; started=SystemClock.elapsedRealtime(); Studio.running=true; Studio.status="Preparando ejecución"
+        stop(); val token=generation; steps=0; started=SystemClock.elapsedRealtime(); limitMs=p.maxMinutes*60_000L; round=""; Studio.running=true; Studio.status="Preparando ejecución"
         MacroAccessibilityService.instance?.showBar(); Studio.log(if(simulation) "Simulación iniciada: no se envían gestos" else "Ejecución iniciada")
+        // Las pruebas de un paso suelto se ejecutan una sola vez; 0 vueltas = sin fin.
+        val total=if(only!=null) 1 else p.repeatCount
         fun cycle(number: Int) {
             val deadline=SystemClock.elapsedRealtime()+p.timeoutMs
+            steps=0
+            round=when { total==1 -> ""; total==0 -> "Vuelta $number · "; else -> "Vuelta $number/$total · " }
             fun execute() { later(token,p.delayMs) { sequence(actions,token,p,simulation) {
                 Studio.log("Secuencia $number finalizada")
-                // Las pruebas de un paso suelto se ejecutan una sola vez.
-                val total=if(only!=null) 1 else p.repeatCount
-                if(number<total) later(token,p.intervalMs) { cycle(number+1) } else stop("Completado: $number ejecución(es)")
+                if(total==0 || number<total) later(token,p.intervalMs) { cycle(number+1) } else stop("Completado: $number ejecución(es)")
             } } }
             fun poll() {
                 detect(p) { found -> later(token) {
                     if(found) execute() else if(SystemClock.elapsedRealtime()>=deadline) stop("Tiempo agotado: ${Studio.lastMatch}") else later(token,700) { poll() }
                 } }
             }
-            if(triggered) poll() else execute()
+            if(triggered) { setStatus("${round}Esperando la imagen de inicio…"); poll() } else execute()
         }
         later(token,1500) { cycle(1) }
     }
@@ -87,8 +94,8 @@ object Engine {
         fun next(index: Int) { later(token) {
             if(index>=actions.size) { done(); return@later }
             val a=actions[index]; if(!a.enabled) { next(index+1); return@later }
-            if(++steps>10_000) { stop("Límite de seguridad: 10.000 instrucciones"); return@later }
-            Studio.currentAction=a.id; Studio.status=a.name; Studio.log("Paso $steps · ${a.name}")
+            if(++steps>10_000) { stop("Límite de seguridad: 10.000 pasos en una sola vuelta"); return@later }
+            Studio.currentAction=a.id; setStatus(round+a.name); Studio.log("Paso $steps · ${a.name}")
             val finish={ next(index+1) }
             when(a.kind) {
                 Kind.WAIT -> later(token,a.durationMs,finish)
@@ -125,6 +132,7 @@ object Engine {
             }
         } }; next(0)
     }
+    private fun setStatus(text: String) { Studio.status=text; MacroAccessibilityService.instance?.showStatus(text) }
     fun detect(p: Project=Studio.project, done: (Boolean)->Unit={}) = detect(p,p.template,done)
     /** Comprueba dentro de [delayMs] si la imagen elegida está en pantalla y
      * avisa con un mensaje. No ejecuta ningún gesto. */
@@ -194,7 +202,10 @@ object Engine {
                     }
                 } }
                 send(if(action.clickStyle==ClickStyle.DOUBLE) 1 else 0)
-            } else if(waitedMs>=p.timeoutMs) stop("Tiempo agotado: ${Studio.lastMatch}")
+            } else if(waitedMs>=(if(action.waitMs>0) action.waitMs else p.timeoutMs)) {
+                if(action.skipIfMissing) { Studio.log("No apareció «${p.templates.firstOrNull { it.id==action.templateId }?.name}»: se salta el paso"); later(token) { done() } }
+                else stop("No apareció la imagen de «${action.name}»")
+            }
             else later(token,700) { clickImage(action,token,p,done,waitedMs+700) }
         }
     }
@@ -207,6 +218,7 @@ object Engine {
         if(selected==null) { stop("Elige una imagen guardada para ${action.name}"); return }
         detectMatch(p,selected) { match ->
             if(match!=null) later(token) { done() }
+            else if(SystemClock.elapsedRealtime()>=deadline && action.skipIfMissing) { Studio.log("No apareció la imagen de «${action.name}»: se sigue"); later(token) { done() } }
             else if(SystemClock.elapsedRealtime()>=deadline) stop("Tiempo agotado esperando «${p.templates.firstOrNull { it.id==action.templateId }?.name ?: action.name}»: ${Studio.lastMatch}")
             else later(token,700) { waitForImage(action,token,p,done,deadline) }
         }

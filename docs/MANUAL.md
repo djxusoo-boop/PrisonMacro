@@ -1,8 +1,8 @@
-# Manual · PrisonMacro 0.4.0
+# Manual · PrisonMacro 0.5.0
 
 ## Instalar
 
-En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.4.0.apk`. Se instala encima de la versión anterior y conserva tus macros.
+En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.5.0.apk`. Se instala encima de la versión anterior y conserva tus macros.
 
 ## Cómo está organizada la app
 
@@ -46,6 +46,14 @@ Ahora la captura **ya no se corta al girar la pantalla** (por ejemplo, al abrir 
 
 `⠿ ▶ ■ ● 📷 ⌂ ✕` — arrastra desde **⠿** para moverlo. **▶** reproduce (y pasa a **Ⅱ** para pausar), **■** para, **●** graba, **📷** guarda una captura en la biblioteca, **⌂** vuelve a PrisonMacro, **✕** oculta el panel.
 
+Mientras la macro funciona, el panel muestra la vuelta y el paso en curso. Cuando termina o se para por un problema (por ejemplo, una imagen que no aparece), sale un aviso encima del juego explicando por qué.
+
+Al **grabar**, el panel indica **● Toca para grabar** cuando el siguiente toque se va a guardar (la pantalla se tiñe de rojo muy suave) y **⏳ Espera…** mientras se reproduce el toque anterior: lo que toques durante ese segundo llega al juego pero no se graba.
+
+### Tocar o deslizar
+
+En el paso **👆 Tocar / deslizar** eliges **Tocar** o **Deslizar**. Para deslizar, pulsa **Dibujarlo arrastrando el dedo en la pantalla**: vas al juego, arrastras desde donde empieza hasta donde acaba, y vuelves con los dos puntos guardados. También puedes escribir los porcentajes «Desde» y «Hasta».
+
 ## Imágenes: «cuando veas esto, toca aquí»
 
 Añade el paso **🎯 Buscar imagen y tocarla** (o **⏳ Esperar a ver una imagen**, o **🖼 Si se ve una imagen…**). En su editor, la sección de imagen tiene:
@@ -58,6 +66,10 @@ Añade el paso **🎯 Buscar imagen y tocarla** (o **⏳ Esperar a ver una image
 
 En **Buscar imagen y tocarla** eliges dónde tocar (en el centro, desplazado o en otro punto de la pantalla, que puedes marcar tocando la pantalla) y el tipo de toque (uno, doble o largo).
 
+**Si la imagen no aparece**: en **Buscar imagen y tocarla** eliges cuántos segundos buscarla y qué hacer si no sale: **■ Parar la macro** o **⏭ Saltar este paso y seguir** (útil para ventanas que salen solo a veces). **Esperar a ver una imagen** tiene la misma opción.
+
+**Colores**: en **🎨 Si se ve un color…** pulsa **🎯 Elegir el color tocándolo en una captura**. Vas al juego, pulsas 📷 Capturar y tocas el punto: se guardan su color exacto y su posición, sin escribir códigos.
+
 En **Si se ve una imagen…** y **Si se ve un color…** la lista muestra las dos ramas, **✔ Si se ve** y **✖ Si NO se ve**, cada una con su **＋ Añadir paso aquí**. Igual con **🔁 Repetir pasos**.
 
 ## Cómo empieza y cuántas veces se repite
@@ -65,10 +77,11 @@ En **Si se ve una imagen…** y **Si se ve un color…** la lista muestra las do
 Toca la tarjeta **🚩** del editor (o ⚙):
 
 - **Al pulsar ▶** o **Cuando se vea una imagen** (con 📷 Capturar o 🖼 Mis imágenes para elegirla).
-- **Vueltas**: cuántas veces se repite la macro entera, y la pausa entre vueltas.
+- **Repetición**: un número de vueltas (1–1000) o **Sin fin (hasta ■)**, y la pausa entre vueltas.
+- **Parar sola a los … minutos**: seguridad por si olvidas una macro en marcha (30 por defecto; 0 = nunca).
 - **Búsqueda de imágenes**: en toda la pantalla o solo en su sitio original, el parecido exigido (90–95 % recomendado) y el tiempo máximo buscando.
 
-Por seguridad, cualquier ejecución se detiene a los 30 minutos o tras 10.000 pasos.
+Además, una sola vuelta se detiene si supera 10.000 pasos (evita bucles sin salida).
 
 ## Copias de seguridad
 
@@ -77,6 +90,16 @@ Por seguridad, cualquier ejecución se detiene a los 30 minutos o tras 10.000 pa
 - **Recuperar**: ⚙ Ajustes › **♻ Restaurar copia o importar una macro**. La app reconoce el tipo de archivo:
   - una copia completa reemplaza las macros con el mismo origen y no toca las demás (pide confirmación);
   - una macro suelta se añade como nueva.
+
+## iPhone
+
+La app de iPhone edita macros con las capturas que ya hiciste en Android/BlueStacks:
+
+1. En Android, ⚙ Ajustes › **💾 Crear copia de seguridad** y guarda el archivo en iCloud Drive, Drive o envíalo al iPhone.
+2. En el iPhone, pestaña **Editor** › **Importar** y elige ese archivo: entran **todas** las macros con sus capturas.
+3. Edita, exporta el `.json` o súbelo a la Nube, y en Android ábrelo con **♻ Restaurar o importar** (o descárgalo desde ☁ Nube).
+
+Desde 0.5.0 el iPhone conserva los ajustes de Android que todavía no sabe editar (cómo empieza, vueltas, «sin fin», saltar si no aparece la imagen…). Con versiones anteriores del iPhone esos ajustes se perdían al guardar.
 
 ## Límites
 

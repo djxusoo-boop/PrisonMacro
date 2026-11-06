@@ -61,16 +61,22 @@ struct MacroAction: Codable, Identifiable, Hashable {
     var colorMode: MacroSearchMode
     var colorX: Float
     var colorY: Float
+    /// Android: si la imagen no aparece a tiempo, sigue en vez de parar.
+    var skipIfMissing: Bool = false
+    /// Android: tiempo máximo buscando la imagen (0 = el de la macro).
+    var waitMs: Int64 = 0
 
     init(id: String = UUID().uuidString.lowercased(), kind: MacroKind = .GESTURE, name: String = "Pulsación", description: String = "", enabled: Bool = true, durationMs: Int64 = 80, points: [MacroPoint] = [MacroPoint(x: 0.5, y: 0.5)], count: Int = 2, children: [MacroAction] = [], otherwise: [MacroAction] = [], packageName: String = "es.macrostudio", templateId: String = "", clickTarget: MacroClickTarget = .CENTER, clickStyle: MacroClickStyle = .SINGLE, clickOffsetX: Float = 0, clickOffsetY: Float = 0, targetColor: Int32 = -65536, colorTolerance: Int = 24, colorMode: MacroSearchMode = .ANYWHERE, colorX: Float = 0.5, colorY: Float = 0.5) {
         self.id = id; self.kind = kind; self.name = name; self.description = description; self.enabled = enabled; self.durationMs = durationMs; self.points = points; self.count = count; self.children = children; self.otherwise = otherwise; self.packageName = packageName; self.templateId = templateId; self.clickTarget = clickTarget; self.clickStyle = clickStyle; self.clickOffsetX = clickOffsetX; self.clickOffsetY = clickOffsetY; self.targetColor = targetColor; self.colorTolerance = colorTolerance; self.colorMode = colorMode; self.colorX = colorX; self.colorY = colorY
     }
 
-    enum CodingKeys: String, CodingKey { case id, kind, name, description, enabled, durationMs, points, count, children, otherwise, packageName, templateId, clickTarget, clickStyle, clickOffsetX, clickOffsetY, targetColor, colorTolerance, colorMode, colorX, colorY }
+    enum CodingKeys: String, CodingKey { case id, kind, name, description, enabled, durationMs, points, count, children, otherwise, packageName, templateId, clickTarget, clickStyle, clickOffsetX, clickOffsetY, targetColor, colorTolerance, colorMode, colorX, colorY, skipIfMissing, waitMs }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(id: try c.decode(String.self, forKey: .id), kind: try c.decode(MacroKind.self, forKey: .kind), name: try c.decode(String.self, forKey: .name), description: try c.decodeIfPresent(String.self, forKey: .description) ?? "", enabled: try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true, durationMs: try c.decodeIfPresent(Int64.self, forKey: .durationMs) ?? 80, points: try c.decodeIfPresent([MacroPoint].self, forKey: .points) ?? [MacroPoint(x: 0.5, y: 0.5)], count: try c.decodeIfPresent(Int.self, forKey: .count) ?? 2, children: try c.decodeIfPresent([MacroAction].self, forKey: .children) ?? [], otherwise: try c.decodeIfPresent([MacroAction].self, forKey: .otherwise) ?? [], packageName: try c.decodeIfPresent(String.self, forKey: .packageName) ?? "es.macrostudio", templateId: try c.decodeIfPresent(String.self, forKey: .templateId) ?? "", clickTarget: try c.decodeIfPresent(MacroClickTarget.self, forKey: .clickTarget) ?? .CENTER, clickStyle: try c.decodeIfPresent(MacroClickStyle.self, forKey: .clickStyle) ?? .SINGLE, clickOffsetX: try c.decodeIfPresent(Float.self, forKey: .clickOffsetX) ?? 0, clickOffsetY: try c.decodeIfPresent(Float.self, forKey: .clickOffsetY) ?? 0, targetColor: try c.decodeIfPresent(Int32.self, forKey: .targetColor) ?? -65536, colorTolerance: try c.decodeIfPresent(Int.self, forKey: .colorTolerance) ?? 24, colorMode: try c.decodeIfPresent(MacroSearchMode.self, forKey: .colorMode) ?? .ANYWHERE, colorX: try c.decodeIfPresent(Float.self, forKey: .colorX) ?? 0.5, colorY: try c.decodeIfPresent(Float.self, forKey: .colorY) ?? 0.5)
+        skipIfMissing = (try? c.decodeIfPresent(Bool.self, forKey: .skipIfMissing)) ?? false
+        waitMs = (try? c.decodeIfPresent(Int64.self, forKey: .waitMs)) ?? 0
     }
 }
 
@@ -85,6 +91,10 @@ struct MacroProject: Codable, Identifiable, Hashable {
     var intervalMs: Int64
     var timeoutMs: Int64
     var maxRuns: Int
+    /// Campos de Android 0.4+: se conservan aunque el iPhone no los edite.
+    var repeatCount: Int = 1
+    var startOnImage: Bool = false
+    var maxMinutes: Int = 30
     var templates: [SavedMacroTemplate]
     /// PNG data keyed by the file name used in the Android JSON schema.
     /// Android strips this field after decoding it and writes the images to its
@@ -96,14 +106,25 @@ struct MacroProject: Codable, Identifiable, Hashable {
         self.schemaVersion = schemaVersion; self.id = id; self.name = name; self.template = template; self.mode = mode; self.threshold = threshold; self.delayMs = delayMs; self.intervalMs = intervalMs; self.timeoutMs = timeoutMs; self.maxRuns = maxRuns; self.templates = templates; self.imagesBase64 = imagesBase64; self.actions = actions
     }
 
-    enum CodingKeys: String, CodingKey { case schemaVersion, id, name, template, mode, threshold, delayMs, intervalMs, timeoutMs, maxRuns, templates, imagesBase64, actions }
+    enum CodingKeys: String, CodingKey { case schemaVersion, id, name, template, mode, threshold, delayMs, intervalMs, timeoutMs, maxRuns, repeatCount, startOnImage, maxMinutes, templates, imagesBase64, actions }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(id: try c.decode(String.self, forKey: .id), name: try c.decode(String.self, forKey: .name), template: try c.decodeIfPresent(MacroTemplate.self, forKey: .template), mode: try c.decodeIfPresent(MacroSearchMode.self, forKey: .mode) ?? .ANYWHERE, threshold: try c.decodeIfPresent(Double.self, forKey: .threshold) ?? 0.93, delayMs: try c.decodeIfPresent(Int64.self, forKey: .delayMs) ?? 500, intervalMs: try c.decodeIfPresent(Int64.self, forKey: .intervalMs) ?? 0, timeoutMs: try c.decodeIfPresent(Int64.self, forKey: .timeoutMs) ?? 60_000, maxRuns: try c.decodeIfPresent(Int.self, forKey: .maxRuns) ?? 10, templates: try c.decodeIfPresent([SavedMacroTemplate].self, forKey: .templates) ?? [], imagesBase64: try c.decodeIfPresent([String: String].self, forKey: .imagesBase64) ?? [:], actions: try c.decodeIfPresent([MacroAction].self, forKey: .actions) ?? [], schemaVersion: try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 4)
+        startOnImage = (try? c.decodeIfPresent(Bool.self, forKey: .startOnImage)) ?? false
+        maxMinutes = (try? c.decodeIfPresent(Int.self, forKey: .maxMinutes)) ?? 30
+        // Igual que Android: proyectos antiguos con pausa entre vueltas usaban maxRuns.
+        if let value = try? c.decodeIfPresent(Int.self, forKey: .repeatCount) { repeatCount = value }
+        else { repeatCount = intervalMs > 0 ? min(max(maxRuns, 1), 1000) : 1 }
     }
 
     func adding(_ action: MacroAction) -> MacroProject { var copy = self; copy.actions.append(action); return copy }
+}
+
+/// Copia de seguridad completa creada en Android (⚙ Ajustes › Copias de seguridad).
+struct MacroBackup: Decodable {
+    var prisonMacroBackup: Int
+    var projects: [MacroProject]
 }
 
 struct CloudMacroProject: Identifiable, Hashable {

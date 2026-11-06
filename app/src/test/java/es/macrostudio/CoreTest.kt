@@ -161,7 +161,31 @@ class CoreTest {
     }
     @Test fun repeatCountIsValidated() {
         assertNull(Project(repeatCount=5).validate())
-        assertNotNull(Project(repeatCount=0).validate())
+        assertNull(Project(repeatCount=0).validate()) // 0 = sin fin
+        assertNotNull(Project(repeatCount=-1).validate())
+        assertNotNull(Project(repeatCount=1001).validate())
+        assertNull(Project(maxMinutes=0).validate())
+        assertNotNull(Project(maxMinutes=2000).validate())
+    }
+    @Test fun newStepOptionsRoundTrip() {
+        val click=Action(kind=Kind.CLICK_IMAGE,skipIfMissing=true,waitMs=5000)
+        val swipe=Action(points=listOf(Point(.5f,.8f),Point(.5f,.2f)),durationMs=300)
+        val p=Project(repeatCount=0,maxMinutes=0,actions=listOf(click,swipe))
+        val back=es.macrostudio.projects.ProjectStore.decode(es.macrostudio.projects.ProjectStore.encode(p))
+        assertEquals(p,back)
+        assertNotNull(Project(actions=listOf(Action(waitMs=-1))).validate())
+    }
+    @Test fun projectsWithoutNewFieldsKeepSafeDefaults() {
+        val json=org.json.JSONObject(es.macrostudio.projects.ProjectStore.encode(Project(actions=listOf(Action(kind=Kind.CLICK_IMAGE)))))
+        json.remove("maxMinutes"); val action=json.getJSONArray("actions").getJSONObject(0); action.remove("skipIfMissing"); action.remove("waitMs")
+        val p=es.macrostudio.projects.ProjectStore.decode(json.toString())
+        assertEquals(30,p.maxMinutes); assertFalse(p.actions[0].skipIfMissing); assertEquals(0L,p.actions[0].waitMs)
+    }
+    @Test fun colorTargetMapsBackToItsStep() {
+        assertEquals("abc",stepOfCaptureTarget(Studio.COLOR_PREFIX+"abc"))
+        assertEquals("abc",stepOfCaptureTarget("abc"))
+        assertNull(stepOfCaptureTarget(Studio.START_IMAGE_TARGET))
+        assertNull(stepOfCaptureTarget(null))
     }
     @Test fun duplicateRegeneratesAllIds() { val a=Action(children=listOf(Action()),otherwise=listOf(Action())); val b=a.duplicate(); assertNotEquals(a.id,b.id); assertNotEquals(a.children[0].id,b.children[0].id); assertNotEquals(a.otherwise[0].id,b.otherwise[0].id) }
     @Test fun legacyMainImageIsRecoveredIntoTheActionLibrary() {

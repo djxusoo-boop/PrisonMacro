@@ -106,6 +106,7 @@ private val noConfigKinds = setOf(Kind.BACK, Kind.HOME, Kind.RECENTS, Kind.NOTIF
             StepList(c, p.actions, "", busy, onAdd = { addTarget = it })
             if (p.actions.isNotEmpty()) TextButton(onClick = { addTarget = AddTarget() }, enabled = !busy) { Text("＋ Añadir paso al final") }
             if (p.repeatCount > 1) Hint("Al terminar, la macro vuelve a empezar hasta completar ${p.repeatCount} vueltas.")
+            if (p.repeatCount == 0) Hint("Al terminar, la macro vuelve a empezar hasta que pulses ■ en el panel" + if (p.maxMinutes > 0) " (o pasen ${p.maxMinutes} min)." else ".")
             Spacer(Modifier.height(24.dp))
         }
     }
@@ -142,8 +143,8 @@ private val noConfigKinds = setOf(Kind.BACK, Kind.HOME, Kind.RECENTS, Kind.NOTIF
         Column(Modifier.weight(1f)) {
             Text(if (p.startOnImage) "Empieza cuando se vea una imagen" else "Empieza al pulsar ▶", style = MaterialTheme.typography.bodyLarge)
             Hint(buildString {
-                append(if (p.repeatCount > 1) "Se repite ${p.repeatCount} veces" else "Se ejecuta una vez")
-                if (p.repeatCount > 1 && p.intervalMs > 0) append(", con ${readableDuration(p.intervalMs)} de pausa")
+                append(when (p.repeatCount) { 0 -> "Se repite sin fin hasta que pulses ■"; 1 -> "Se ejecuta una vez"; else -> "Se repite ${p.repeatCount} veces" })
+                if (p.repeatCount != 1 && p.intervalMs > 0) append(", con ${readableDuration(p.intervalMs)} de pausa")
                 append(" · toca para cambiarlo")
             })
         }
@@ -278,19 +279,22 @@ fun Modifier.clip8() = clip(RoundedCornerShape(8.dp))
 @Composable private fun MacroSettingsDialog(c: AppController, onDismiss: () -> Unit) {
     val p = Studio.project
     var startOnImage by remember { mutableStateOf(p.startOnImage) }
-    var repeat by remember { mutableStateOf(p.repeatCount.toString()) }
+    var endless by remember { mutableStateOf(p.repeatCount == 0) }
+    var repeat by remember { mutableStateOf(if (p.repeatCount == 0) "1" else p.repeatCount.toString()) }
+    var minutes by remember { mutableStateOf(p.maxMinutes.toString()) }
     var interval by remember { mutableStateOf(secondsText(p.intervalMs)) }
     var delay by remember { mutableStateOf(secondsText(p.delayMs)) }
     var timeout by remember { mutableStateOf(secondsText(p.timeoutMs)) }
     var mode by remember { mutableStateOf(p.mode) }
     var threshold by remember { mutableFloatStateOf(p.threshold.toFloat()) }
     var picking by remember { mutableStateOf(false) }
-    val repeatN = repeat.toIntOrNull()?.takeIf { it in 1..1000 }
+    val repeatN = if (endless) 0 else repeat.toIntOrNull()?.takeIf { it in 1..1000 }
+    val minutesN = minutes.toIntOrNull()?.takeIf { it in 0..1440 }
     val intervalMs = parseSeconds(interval)?.takeIf { it in 0..3_600_000 }
     val delayMs = parseSeconds(delay)?.takeIf { it in 0..600_000 }
     val timeoutMs = parseSeconds(timeout)?.takeIf { it in 1000..3_600_000 }
-    val valid = repeatN != null && intervalMs != null && delayMs != null && timeoutMs != null
-    fun collect(base: Project) = base.copy(startOnImage = startOnImage && base.template != null, repeatCount = repeatN!!, intervalMs = intervalMs!!, delayMs = delayMs!!, timeoutMs = timeoutMs!!, mode = mode, threshold = threshold.toDouble().coerceIn(.7, 1.0))
+    val valid = repeatN != null && minutesN != null && intervalMs != null && delayMs != null && timeoutMs != null
+    fun collect(base: Project) = base.copy(startOnImage = startOnImage && base.template != null, repeatCount = repeatN!!, maxMinutes = minutesN!!, intervalMs = intervalMs!!, delayMs = delayMs!!, timeoutMs = timeoutMs!!, mode = mode, threshold = threshold.toDouble().coerceIn(.7, 1.0))
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Ajustes de la macro") },
@@ -313,11 +317,14 @@ fun Modifier.clip8() = clip(RoundedCornerShape(8.dp))
                     }
                 }
                 SectionTitle("🔁 Repetición")
+                ChoiceChips(listOf(false to "Un número de veces", true to "Sin fin (hasta ■)"), endless) { endless = it }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(repeat, { repeat = it.filter(Char::isDigit).take(4) }, label = { Text("Vueltas (1–1000)") }, isError = repeatN == null, singleLine = true, modifier = Modifier.weight(1f))
+                    if (!endless) OutlinedTextField(repeat, { repeat = it.filter(Char::isDigit).take(4) }, label = { Text("Vueltas (1–1000)") }, isError = repeatN == null, singleLine = true, modifier = Modifier.weight(1f))
                     OutlinedTextField(interval, { interval = it.take(8) }, label = { Text("Pausa entre vueltas (s)") }, isError = intervalMs == null, singleLine = true, modifier = Modifier.weight(1f))
                 }
                 OutlinedTextField(delay, { delay = it.take(8) }, label = { Text("Espera antes de empezar (s)") }, isError = delayMs == null, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(minutes, { minutes = it.filter(Char::isDigit).take(4) }, label = { Text("Parar sola a los … minutos (0 = nunca)") }, isError = minutesN == null, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Hint("Seguridad por si te olvidas una macro en marcha. Pon 0 para que solo pare cuando pulses ■.")
                 SectionTitle("🔍 Búsqueda de imágenes")
                 ChoiceChips(listOf(SearchMode.ANYWHERE to "En toda la pantalla", SearchMode.EXACT to "Solo en su sitio original"), mode) { mode = it }
                 Text("Parecido exigido: ${(threshold * 100).toInt()} %", style = MaterialTheme.typography.bodyMedium)
