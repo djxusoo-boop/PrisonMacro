@@ -158,12 +158,21 @@ object Engine {
         },delayMs)
     }
     private fun detect(p: Project, selected: Template?, done: (Boolean)->Unit) = detectMatch(p,selected) { done(it!=null) }
-    private fun detectMatch(p: Project, selected: Template?, done: (Match?)->Unit) {
+    /** Último fotograma, solo si la captura tiene ya la orientación actual de la pantalla. */
+    private fun freshFrame(): Bitmap? {
+        val s=CaptureService.instance ?: return null
+        if(!s.matchesDisplay()) { s.resizeToDisplay(); return null }
+        return s.frame()
+    }
+    private fun detectMatch(p: Project, selected: Template?, attempt: Int=0, done: (Match?)->Unit) {
         if(Studio.detecting) { if(Studio.running) stop("Ya hay una detección en curso"); done(null); return }
         val t=selected
         if(t==null) { Studio.lastMatch="No hay plantilla"; if(Studio.running) stop(Studio.lastMatch); done(null); return }
-        val frame=CaptureService.instance?.frame()
-        if(frame==null) { Studio.lastMatch="No hay captura disponible"; if(Studio.running) stop(Studio.lastMatch); done(null); return }
+        // Tras un giro, la captura tarda unos instantes en tener un fotograma nuevo.
+        val frame=freshFrame() ?: run {
+            if(attempt<8 && CaptureService.instance!=null) { main.postDelayed({ detectMatch(p,selected,attempt+1,done) },250); return }
+            Studio.lastMatch="No hay captura disponible"; if(Studio.running) stop(Studio.lastMatch); done(null); return
+        }
         val token=generation
         Studio.detecting=true
         worker.execute {
@@ -233,10 +242,12 @@ object Engine {
             else later(token,700) { waitForImage(action,token,p,done,deadline) }
         }
     }
-    private fun detectColor(action: Action, done: (Boolean)->Unit) {
+    private fun detectColor(action: Action, attempt: Int=0, done: (Boolean)->Unit) {
         if(Studio.detecting) { if(Studio.running) stop("Ya hay una detección en curso"); done(false); return }
-        val frame=CaptureService.instance?.frame()
-        if(frame==null) { Studio.lastMatch="No hay captura disponible"; if(Studio.running) stop(Studio.lastMatch); done(false); return }
+        val frame=freshFrame() ?: run {
+            if(attempt<8 && CaptureService.instance!=null) { main.postDelayed({ detectColor(action,attempt+1,done) },250); return }
+            Studio.lastMatch="No hay captura disponible"; if(Studio.running) stop(Studio.lastMatch); done(false); return
+        }
         val token=generation
         Studio.detecting=true
         worker.execute {

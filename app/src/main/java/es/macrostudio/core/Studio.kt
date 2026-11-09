@@ -43,6 +43,9 @@ object Studio {
     fun stepOfTarget(target: String?): String? = stepOfCaptureTarget(target)
     /** Pantalla de la app que debe mostrarse al volver ("editor", "images"…). */
     var requestedScreen by mutableStateOf<String?>(null)
+    /** El panel flotante necesita el permiso de captura: "capture" (📷) o "play" (▶).
+     * La app lo pide y vuelve sola a la otra app con el panel. */
+    var panelNeedsCapture by mutableStateOf<String?>(null)
     private val undo=ArrayDeque<Project>(); private val redo=ArrayDeque<Project>()
     var canUndo by mutableStateOf(false); private set
     var canRedo by mutableStateOf(false); private set

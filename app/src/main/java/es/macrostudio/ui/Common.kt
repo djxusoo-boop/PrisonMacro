@@ -117,6 +117,15 @@ fun clickStyleLabel(value: ClickStyle): String = when (value) {
     ClickStyle.LONG -> "pulsación larga"
 }
 
+/** Nombre automático de un paso con imagen. */
+fun autoStepName(kind: Kind, image: String): String = when (kind) {
+    Kind.CLICK_IMAGE -> "Tocar «$image»"
+    Kind.WAIT_IMAGE -> "Esperar «$image»"
+    Kind.IF_IMAGE -> "Si se ve «$image»"
+    Kind.REPEAT -> "Repetir hasta ver «$image»"
+    else -> kindInfo(kind).title
+}.take(100)
+
 /** Resumen de una línea de lo que hará un paso. */
 fun actionSummary(a: Action, p: Project): String {
     val image = p.templates.firstOrNull { it.id == a.templateId }

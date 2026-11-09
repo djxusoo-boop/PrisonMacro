@@ -100,7 +100,7 @@ private val noConfigKinds = setOf(Kind.BACK, Kind.HOME, Kind.RECENTS, Kind.NOTIF
         }
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (issues.isNotEmpty()) IssuesCard(issues)
+            if (issues.isNotEmpty() && p.actions.isNotEmpty()) IssuesCard(issues)
             StartCard(p, onClick = { showSettings = true })
             if (p.actions.isEmpty()) EmptyEditor(onAdd = { addTarget = AddTarget() }, onRecord = { c.record() })
             StepList(c, p.actions, "", busy, onAdd = { addTarget = it })
@@ -202,7 +202,7 @@ fun Modifier.clip8() = clip(RoundedCornerShape(8.dp))
         if (a.kind in containerKinds) {
             Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 when (a.kind) {
-                    Kind.REPEAT -> Branch("🔁 Se repite ${a.count} veces:", c, a, a.children, number, false, busy, onAdd, "Añade los pasos que quieres repetir")
+                    Kind.REPEAT -> Branch(image?.let { "🔁 Se repite hasta ver «${it.name}» (máx. ${a.count}):" } ?: "🔁 Se repite ${a.count} veces:", c, a, a.children, number, false, busy, onAdd, "Añade los pasos que quieres repetir")
                     else -> {
                         val what = if (a.kind == Kind.IF_IMAGE) "la imagen" else "el color"
                         Branch("✔ Si se ve $what:", c, a, a.children, number, false, busy, onAdd, "Sin pasos: no hace nada")
@@ -251,28 +251,37 @@ fun Modifier.clip8() = clip(RoundedCornerShape(8.dp))
 }
 
 @Composable fun AddStepDialog(onDismiss: () -> Unit, onChoose: (Kind) -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("¿Qué debe hacer este paso?") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                kindGroups.forEach { (group, kinds) ->
-                    SectionTitle(group)
-                    kinds.forEach { kind ->
-                        val info = kindInfo(kind)
-                        Row(
-                            Modifier.fillMaxWidth().clip8().clickable { onChoose(kind) }.padding(vertical = 8.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(info.icon, style = MaterialTheme.typography.headlineSmall)
-                            Column { Text(info.title, style = MaterialTheme.typography.bodyLarge); Hint(info.hint) }
+    // Ventana ancha con las opciones en cuadrícula: en horizontal se ven todas sin desplazarse.
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxWidth(.94f).fillMaxHeight(.92f), shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("¿Qué debe hacer este paso?", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onDismiss) { Text("Cancelar") }
+                }
+                androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                    androidx.compose.foundation.lazy.grid.GridCells.Adaptive(250.dp), Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    kindGroups.forEach { (group, kinds) ->
+                        item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { SectionTitle(group) }
+                        kinds.forEach { kind ->
+                            item {
+                                val info = kindInfo(kind)
+                                Row(
+                                    Modifier.fillMaxWidth().clip8().background(MaterialTheme.colorScheme.surfaceVariant).clickable { onChoose(kind) }.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(info.icon, style = MaterialTheme.typography.headlineSmall)
+                                    Column { Text(info.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(info.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                                }
+                            }
                         }
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
-    )
+        }
+    }
 }
 
 /** Cómo empieza y cuántas veces se repite la macro, y la sensibilidad de la búsqueda. */

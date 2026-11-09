@@ -7,14 +7,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import es.macrostudio.core.*
+import es.macrostudio.gestures.MacroAccessibilityService
 
 @Composable fun PrisonApp(activity: ComponentActivity) {
     val c = rememberAppController(activity)
     // Al volver de capturar, recortar o elegir un punto, reabre el paso correspondiente.
-    LaunchedEffect(Studio.requestedScreen, Studio.reopenActionId) {
+    LaunchedEffect(Studio.requestedScreen, Studio.reopenActionId, Studio.panelNeedsCapture) {
         Studio.requestedScreen?.let { name ->
             Studio.requestedScreen = null
             c.open(when (name) { "images" -> Screen.IMAGES; "home" -> Screen.HOME; else -> Screen.EDITOR })
+        }
+        Studio.panelNeedsCapture?.let { what ->
+            Studio.panelNeedsCapture = null
+            if (what == "capture") c.captureFor(Studio.pendingTemplateActionId)
+            else c.withCapture { MacroAccessibilityService.instance?.showBar(); activity.moveTaskToBack(true); c.toast("Listo. Pulsa ▶ en el panel para empezar") }
         }
         Studio.reopenActionId?.let { id ->
             Studio.reopenActionId = null

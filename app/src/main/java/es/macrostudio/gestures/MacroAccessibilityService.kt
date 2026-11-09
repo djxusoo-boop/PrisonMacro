@@ -119,12 +119,14 @@ class MacroAccessibilityService: AccessibilityService() {
             }
             Studio.recording -> {
                 button("■ Terminar grabación","Terminar grabación",Color.rgb(170,40,60),widthDp=170) { stopRecording(); Studio.requestedScreen="editor"; openApp() }
-                addStatus(row,if(recordArmed) "● Toca para grabar · $recordedCount" else "⏳ Espera…")
+                addStatus(row,if(recordArmed) "● Grabando · $recordedCount" else "⏳ Espera…")
             }
             else -> {
                 val running=Studio.running
                 button(if(!running || Studio.paused) "▶" else "Ⅱ",if(!running) "Reproducir ${Studio.project.name}" else if(Studio.paused) "Seguir" else "Pausa",Color.rgb(20,120,110)) {
-                    if(!running) Engine.start(Studio.project.startOnImage) else Engine.pause()
+                    if(running) Engine.pause()
+                    else if(Studio.project.needsScreenCapture() && !Studio.captureReady) { Studio.panelNeedsCapture="play"; openApp() }
+                    else Engine.start(Studio.project.startOnImage)
                 }
                 button("■","Parar",Color.rgb(150,40,55),enabled=running) { Engine.stop("Parada manual") }
                 button("●","Grabar gestos",enabled=!running) { startRecording() }
@@ -138,7 +140,7 @@ class MacroAccessibilityService: AccessibilityService() {
 
     private fun addStatus(row: LinearLayout, text: String) {
         val view=TextView(this).apply {
-            this.text=text; textSize=12f; setTextColor(Color.rgb(200,225,230)); maxLines=2; maxWidth=dp(150)
+            this.text=text; textSize=12f; setTextColor(Color.rgb(200,225,230)); maxLines=2; maxWidth=dp(190)
             ellipsize=android.text.TextUtils.TruncateAt.END; setPadding(dp(6),0,dp(4),0)
         }
         statusView=view
@@ -163,14 +165,17 @@ class MacroAccessibilityService: AccessibilityService() {
 
     private fun openApp() {
         hideBar()
-        startActivity(Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+        // CLEAR_TOP: la pantalla principal queda delante aunque hubiera otra de la app encima
+        // (si no, una petición de permiso quedaba esperando detrás).
+        startActivity(Intent(this,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
     }
 
     fun hideBar() { bar?.let { runCatching { wm.removeView(it) } }; bar=null; barMode=BarMode.CONTROL }
 
     private fun capture() {
         val service=CaptureService.instance ?: run {
-            Studio.fail("Primero autoriza la captura de pantalla desde PrisonMacro"); openApp(); return
+            // Sin permiso de captura: la app lo pide y vuelve aquí con el panel de captura.
+            Studio.panelNeedsCapture="capture"; openApp(); return
         }
         bar?.visibility=View.INVISIBLE
         main.postDelayed({ service.saveScreenshot { success ->
@@ -433,7 +438,7 @@ class MacroAccessibilityService: AccessibilityService() {
                                 lastEnd=SystemClock.elapsedRealtime()
                                 if(generation==recordGeneration && recorder===overlay && Studio.recording) {
                                     if(!setRecordingTouchable(true)) { stopRecording(); Studio.fail("No se pudo reanudar la grabación") }
-                                    else { recordArmed=true; overlay.setBackgroundColor(Color.argb(28,255,70,100)); showStatus("● Toca para grabar · $recordedCount") }
+                                    else { recordArmed=true; overlay.setBackgroundColor(Color.argb(28,255,70,100)); showStatus("● Grabando · $recordedCount") }
                                 }
                             }
                             // En emuladores y dispositivos cargados el clic puede
@@ -454,7 +459,7 @@ class MacroAccessibilityService: AccessibilityService() {
     fun stopRecording() {
         recordGeneration++
         recorder?.let { runCatching { wm.removeView(it) } }; recorder=null
-        if(Studio.recording) Studio.log("Grabación guardada")
+        if(Studio.recording) { Studio.log("Grabación guardada: $recordedCount gesto(s)"); Studio.status="Grabación guardada: $recordedCount gesto(s)" }
         Studio.recording=false; refreshBar()
     }
 }

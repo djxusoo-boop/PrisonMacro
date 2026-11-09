@@ -28,6 +28,9 @@ class CropActivity: ComponentActivity() {
             b.recycle(); Studio.fail("Imagen demasiado grande (máximo 8192 px y 20 MP)"); finish(); return
         }
         if(b==null) { Studio.fail(if(existing==null) "No se pudo abrir la captura reciente" else "No se pudo abrir la imagen elegida"); finish(); return }; bitmap=b
+        // Recorta con la misma orientación que la captura: una captura horizontal de un
+        // juego se veía diminuta en vertical y costaba marcar el botón.
+        requestedOrientation=if(b.width>b.height) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
         val target=intent.getStringExtra("actionId")
         // Modo color: el usuario toca un píxel de la captura y se guarda su color y posición.
         val colorFor=target?.takeIf { it.startsWith(Studio.COLOR_PREFIX) }?.removePrefix(Studio.COLOR_PREFIX)

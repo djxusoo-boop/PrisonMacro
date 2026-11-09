@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import es.macrostudio.BuildConfig
@@ -32,16 +33,16 @@ import java.util.UUID
                     BrandMark(34.dp)
                     Column { Text("PrisonMacro"); Text("Mis macros · ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 } },
-                actions = { IconButton(onClick = { c.open(Screen.SETTINGS) }) { Icon(Icons.Default.Settings, "Ajustes y copias de seguridad") } }
+                actions = {
+                    if (Studio.projects.isNotEmpty()) FilledTonalButton(onClick = { creating = true }, modifier = Modifier.padding(end = 4.dp)) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Nueva macro") }
+                    IconButton(onClick = { c.open(Screen.SETTINGS) }) { Icon(Icons.Default.Settings, "Ajustes y copias de seguridad") }
+                }
             )
         },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = { creating = true }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("Nueva macro") })
-        }
     ) { padding ->
         LazyColumn(
             Modifier.padding(padding).fillMaxSize(),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 96.dp),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { PermissionsCard(c) }
@@ -49,8 +50,11 @@ import java.util.UUID
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Todavía no tienes macros", style = MaterialTheme.typography.titleLarge)
-                        Text("Pulsa «Nueva macro». Dentro podrás grabar tus toques o añadir pasos uno a uno: tocar, esperar, buscar una imagen…")
-                        Text("¿Tienes una copia de seguridad? Restáurala desde ⚙ Ajustes.", style = MaterialTheme.typography.bodySmall)
+                        Text("Dentro podrás grabar tus toques o añadir pasos uno a uno: tocar, esperar, buscar una imagen…")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Button(onClick = { creating = true }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Crear mi primera macro") }
+                            OutlinedButton(onClick = { c.open(Screen.SETTINGS) }) { Text("♻ Restaurar una copia") }
+                        }
                     }
                 }
             }
@@ -117,18 +121,21 @@ import java.util.UUID
 
 /** Los dos permisos que necesita la app, con un botón para cada uno. Se oculta cuando todo está listo. */
 @Composable fun PermissionsCard(c: AppController, alwaysShow: Boolean = false) {
-    if (!alwaysShow && Studio.accessibilityReady && Studio.captureReady) return
+    // En el inicio solo hace falta la accesibilidad: la captura la pide la app sola cuando
+    // se necesita (Android la retira en cada reinicio y el aviso no se iba nunca).
+    if (!alwaysShow && Studio.accessibilityReady) return
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!alwaysShow) Text("Antes de empezar", style = MaterialTheme.typography.titleMedium)
             PermissionRow(
-                "1. Accesibilidad", "Permite tocar la pantalla y mostrar el panel flotante.",
+                if (alwaysShow) "1. Accesibilidad" else "Accesibilidad", "Permite tocar la pantalla y mostrar el panel flotante.",
                 Studio.accessibilityReady, if (Studio.accessibilityReady) "Ajustes" else "Activar"
             ) { c.openAccessibilitySettings() }
-            PermissionRow(
+            if (alwaysShow) PermissionRow(
                 "2. Captura de pantalla", "Necesaria para buscar imágenes y colores. Android la pide cada vez que se reinicia.",
                 Studio.captureReady, if (Studio.captureReady) "Detener" else "Autorizar"
             ) { if (Studio.captureReady) c.stopCapture() else c.requestCaptureOnly() }
+            else Hint("La captura de pantalla (para buscar imágenes) la pedirá la app sola cuando una macro la necesite.")
         }
     }
 }
@@ -136,7 +143,7 @@ import java.util.UUID
 @Composable private fun PermissionRow(title: String, text: String, ok: Boolean, button: String, onClick: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Column(Modifier.weight(1f)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text(title, style = MaterialTheme.typography.bodyLarge); StatusPill(ok, "listo", "pendiente") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text(title, style = MaterialTheme.typography.bodyLarge); StatusPill(ok, "listo", "falta") }
             Hint(text)
         }
         if (ok) OutlinedButton(onClick = onClick) { Text(button) } else Button(onClick = onClick) { Text(button) }
@@ -144,12 +151,14 @@ import java.util.UUID
 }
 
 @Composable fun NameDialog(title: String, initial: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var name by remember { mutableStateOf(initial) }
+    var name by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(initial, androidx.compose.ui.text.TextRange(0, initial.length))) }
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { OutlinedTextField(value = name, onValueChange = { name = it.take(100) }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
-        confirmButton = { TextButton(onClick = { onConfirm(name.trim()) }, enabled = name.isNotBlank()) { Text(confirm) } },
+        text = { OutlinedTextField(value = name, onValueChange = { if (it.text.length <= 100) name = it }, label = { Text("Nombre") }, singleLine = true, modifier = Modifier.fillMaxWidth().focusRequester(focus)) },
+        confirmButton = { TextButton(onClick = { onConfirm(name.text.trim()) }, enabled = name.text.isNotBlank()) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } }
     )
 }

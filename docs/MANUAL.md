@@ -58,7 +58,7 @@ Ahora la captura **ya no se corta al girar la pantalla** (por ejemplo, al abrir 
 
 Mientras la macro funciona, el panel muestra la vuelta y el paso en curso. Cuando termina o se para por un problema (por ejemplo, una imagen que no aparece), sale un aviso encima del juego explicando por qué.
 
-Al **grabar**, el panel indica **● Toca para grabar** cuando el siguiente toque se va a guardar (la pantalla se tiñe de rojo muy suave) y **⏳ Espera…** mientras se reproduce el toque anterior: lo que toques durante ese segundo llega al juego pero no se graba.
+Al **grabar**, el panel indica **● Grabando · n** cuando el siguiente toque se va a guardar (la pantalla se tiñe de rojo muy suave) y **⏳ Espera…** mientras se reproduce el toque anterior: lo que toques durante ese segundo llega al juego pero no se graba.
 
 ### Tocar o deslizar
 

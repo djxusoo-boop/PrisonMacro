@@ -57,6 +57,13 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
     // Repetir: un número fijo de veces o hasta que se vea una imagen.
     var untilImage by remember(a.id) { mutableStateOf(a.kind == Kind.REPEAT && a.templateId.isNotEmpty()) }
     var picking by remember { mutableStateOf(false) }
+    // Al elegir o capturar la imagen, el paso se nombra solo («Tocar «Jugar»») si aún
+    // tenía el nombre genérico o uno puesto así automáticamente.
+    LaunchedEffect(templateId) {
+        val img = Studio.project.templates.firstOrNull { it.id == templateId }?.name ?: return@LaunchedEffect
+        val generic = name.isBlank() || name == kindInfo(a.kind).title.removeSuffix("…") || name.endsWith("»") && name.contains("«")
+        if (generic) name = autoStepName(a.kind, img)
+    }
     var choosingApp by remember { mutableStateOf(false) }
 
     fun pct(t: String) = t.trim().replace(',', '.').toFloatOrNull()?.takeIf { it.isFinite() }
