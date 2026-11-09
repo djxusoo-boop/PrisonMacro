@@ -121,7 +121,7 @@ struct MacroProject: Codable, Identifiable, Hashable {
     var imagesBase64: [String: String]
     var actions: [MacroAction]
 
-    init(id: String = UUID().uuidString.lowercased(), name: String = "Mi secuencia", template: MacroTemplate? = nil, mode: MacroSearchMode = .ANYWHERE, threshold: Double = 0.93, delayMs: Int64 = 500, intervalMs: Int64 = 0, timeoutMs: Int64 = 60_000, maxRuns: Int = 10, templates: [SavedMacroTemplate] = [], imagesBase64: [String: String] = [:], actions: [MacroAction] = [], schemaVersion: Int = 4) {
+    init(id: String = UUID().uuidString.lowercased(), name: String = "Mi macro", template: MacroTemplate? = nil, mode: MacroSearchMode = .ANYWHERE, threshold: Double = 0.93, delayMs: Int64 = 500, intervalMs: Int64 = 0, timeoutMs: Int64 = 60_000, maxRuns: Int = 10, templates: [SavedMacroTemplate] = [], imagesBase64: [String: String] = [:], actions: [MacroAction] = [], schemaVersion: Int = 4) {
         self.schemaVersion = schemaVersion; self.id = id; self.name = name; self.template = template; self.mode = mode; self.threshold = threshold; self.delayMs = delayMs; self.intervalMs = intervalMs; self.timeoutMs = timeoutMs; self.maxRuns = maxRuns; self.templates = templates; self.imagesBase64 = imagesBase64; self.actions = actions
     }
 

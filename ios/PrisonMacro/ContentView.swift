@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var recropTemplateID: String?
     @State private var deleteTemplate: SavedMacroTemplate?
     @State private var deleteProjectID: String?
+    @State private var selectedTab = 0
 
     init(cloud: CloudStore) {
         self.cloud = cloud
@@ -28,18 +29,27 @@ struct ContentView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             editorTab
-                .tabItem { Label("Editor", systemImage: "list.number") }
+                .tabItem { Label("Editor", systemImage: "list.number") }.tag(0)
             capturesTab
-                .tabItem { Label("Capturas", systemImage: "photo.on.rectangle") }
+                .tabItem { Label("Capturas", systemImage: "photo.on.rectangle") }.tag(1)
             projectsTab
-                .tabItem { Label("Proyectos", systemImage: "folder") }
+                .tabItem { Label("Proyectos", systemImage: "folder") }.tag(2)
             cloudTab
-                .tabItem { Label("Nube", systemImage: "arrow.triangle.2.circlepath") }
+                .tabItem { Label("Nube", systemImage: "arrow.triangle.2.circlepath") }.tag(3)
             helpTab
-                .tabItem { Label("Ayuda", systemImage: "questionmark.circle") }
+                .tabItem { Label("Ayuda", systemImage: "questionmark.circle") }.tag(4)
         }
+        #if DEBUG
+        // Solo en compilaciones de prueba: `-importFile <ruta>` importa un archivo como el
+        // botón Importar y `-tab <n>` abre esa pestaña, para revisar pantallas en el simulador.
+        .onAppear {
+            let defaults = UserDefaults.standard
+            if let path = defaults.string(forKey: "importFile") { importProject(.success(URL(fileURLWithPath: path))) }
+            selectedTab = defaults.integer(forKey: "tab")
+        }
+        #endif
         .onChange(of: project) { value in persistCurrent(value) }
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { result in importProject(result) }
         .fileExporter(isPresented: $showingExporter, document: document, contentType: .json, defaultFilename: "PrisonMacro-\(safeFileName(project.name)).json") { result in
@@ -146,8 +156,8 @@ struct ContentView: View {
             }
             TextField("Nombre del proyecto", text: $project.name).font(.title3.weight(.semibold)).textFieldStyle(.roundedBorder)
             HStack {
-                Label("\(recursiveActionCount(project.actions)) pasos", systemImage: "list.number")
-                Label("\(project.templates.count) capturas", systemImage: "photo")
+                Label(plural(recursiveActionCount(project.actions), "paso", "pasos"), systemImage: "list.number")
+                Label(plural(project.templates.count, "captura", "capturas"), systemImage: "photo")
                 Spacer()
             }.font(.subheadline).foregroundStyle(.secondary)
             HStack(spacing: 8) {
@@ -215,7 +225,7 @@ struct ContentView: View {
                         }
                     }
                 } header: { Text("Capturas guardadas · \(project.templates.count)") } footer: {
-                    Text("La captura principal solo sirve como referencia de resolución/inicio rápido. En cada condición o clic eliges otra desde su propio selector.")
+                    Text("Cada paso elige su propia captura. La imagen de inicio sirve para que la macro empiece al verla (se activa en Android, en «Cómo empieza»).")
                 }
             }.navigationTitle("Capturas")
         }
@@ -294,17 +304,22 @@ struct ContentView: View {
     private var helpTab: some View {
         NavigationStack {
             List {
+                Section("Pasar macros entre Android y iPhone") {
+                    HelpRow(title: "De Android al iPhone", detail: "En Android: ⚙ Ajustes › 💾 Crear copia de seguridad, y guárdala en Drive o envíatela. En el iPhone: Editor › Importar y elige ese archivo. Entran todas las macros con sus capturas.")
+                    HelpRow(title: "Del iPhone a Android", detail: "Editor › Exportar (o súbela a la Nube). En Android: ⚙ Ajustes › ♻ Restaurar copia o importar una macro, o descárgala desde ☁ Nube.")
+                }
                 Section("Cómo crear un paso") {
-                    HelpRow(title: "Detectar imagen y hacer clic", detail: "Añade el paso, elige la captura desde su miniatura y selecciona centro, desplazamiento o punto fijo. En Android puedes capturar el punto tocando la pantalla.")
-                    HelpRow(title: "SI SE VE UNA IMAGEN", detail: "La condición tiene su propia captura. ENTONCES ejecuta los pasos si aparece; SI NO vacío significa continuar.")
-                    HelpRow(title: "Esperar y repetir", detail: "Usa esperas entre abrir una app, detectar una pantalla y realizar el siguiente clic. Repetir agrupa pasos en una secuencia.")
-                    HelpRow(title: "Colores", detail: "En Android puedes detectar un color en un punto exacto o en cualquier lugar, con tolerancia. El iPhone conserva esa configuración al editar y sincronizar.")
+                    HelpRow(title: "Buscar imagen y tocarla", detail: "Añade el paso y toca la captura que quieres usar: el paso se nombra solo («Tocar «Jugar»»). Elige dónde tocar y qué hacer si la imagen no aparece.")
+                    HelpRow(title: "Si se ve una imagen…", detail: "Tiene su propia captura. ENTONCES hace sus pasos si aparece; si SI NO está vacío, sigue con el siguiente paso.")
+                    HelpRow(title: "Repetir pasos", detail: "Repite los pasos de dentro un número de veces, o hasta ver una imagen (con un máximo por seguridad).")
+                    HelpRow(title: "Parar la macro", detail: "Termina la macro en ese punto. Úsalo dentro de «Si se ve…», por ejemplo si aparece la pantalla de derrota.")
+                    HelpRow(title: "Puntos y colores", detail: "Escribe los puntos en % de la pantalla, o márcalos tocando la pantalla desde Android. El color se elige tocándolo en una captura, también en Android.")
                 }
                 Section("Qué hace cada dispositivo") {
-                    Text("El iPhone es el editor y la biblioteca sincronizada. Android/BlueStacks es quien ejecuta las acciones mediante sus permisos de captura y accesibilidad. Las capturas viajan dentro del JSON o de la nube.")
+                    Text("El iPhone edita y guarda las macros. Android/BlueStacks las ejecuta con sus permisos de captura y accesibilidad. Las capturas viajan dentro del archivo o de la nube.")
                 }
-                Section("Seguridad de pruebas") {
-                    Text("Prueba primero en el Laboratorio de PrisonMacro. No ejecutes macros sobre compras, mensajes, cuentas ni partidas competitivas mientras estés ajustando coordenadas.")
+                Section("Seguridad") {
+                    Text("Prueba primero en el Laboratorio de PrisonMacro (Android › ⚙ Ajustes). No ejecutes macros sobre compras, mensajes o cuentas.")
                 }
             }.navigationTitle("Ayuda")
         }
@@ -435,7 +450,11 @@ private struct ActionEditorCard: View {
     let onDuplicate: () -> Void
     let onDelete: () -> Void
 
+    #if DEBUG
+    @State private var expanded = UserDefaults.standard.bool(forKey: "expandAll")
+    #else
     @State private var expanded = false
+    #endif
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -443,7 +462,7 @@ private struct ActionEditorCard: View {
                 Text("\(number)").font(.title3.weight(.bold)).foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(action.name.isEmpty ? kindLabel(action.kind) : action.name).font(.headline).lineLimit(1)
-                    Text("\(kindLabel(action.kind)) · \(readableActionSummary(action))").font(.caption).foregroundStyle(stepNeedsImage ? .red : .secondary).lineLimit(2)
+                    Text(stepSubtitle).font(.caption).foregroundStyle(stepNeedsImage ? .red : .secondary).lineLimit(2)
                 }
                 Spacer()
                 Toggle("Activo", isOn: $action.enabled).labelsHidden()
@@ -455,6 +474,12 @@ private struct ActionEditorCard: View {
             if expanded { details }
         }
         .padding(12).background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var stepSubtitle: String {
+        let summary = readableActionSummary(action, image: templates.first(where: { $0.id == action.templateId })?.name)
+        let kind = kindLabel(action.kind).replacingOccurrences(of: "…", with: "")
+        return action.name == kind || action.name.isEmpty ? summary.prefix(1).uppercased() + summary.dropFirst() : "\(kind) · \(summary)"
     }
 
     private var stepNeedsImage: Bool {
@@ -487,6 +512,7 @@ private struct ActionEditorCard: View {
                 Text("Un número de veces").tag("")
                 ForEach(templates) { saved in Text("Hasta ver «\(saved.name)»").tag(saved.id) }
             }.pickerStyle(.menu)
+            .onChange(of: action.templateId) { id in if let name = templates.first(where: { $0.id == id })?.name { renameForImage(&action, name) } }
             IntegerField(title: action.templateId.isEmpty ? "Cuántas veces (1–100)" : "Como máximo (1–100 veces)", value: Binding(get: { Int64(action.count) }, set: { action.count = Int($0) }), minimum: 1, maximum: 100)
             if !action.templateId.isEmpty {
                 Text("Antes de cada vuelta mira la pantalla: si ya se ve la imagen, sale del bloque y sigue.").font(.footnote).foregroundStyle(.secondary)
@@ -514,21 +540,12 @@ private struct ImageActionEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(action.kind == .CLICK_IMAGE ? "Imagen que debe detectar para hacer clic" : action.kind == .WAIT_IMAGE ? "Imagen que debe aparecer para continuar" : "Imagen de esta condición").font(.subheadline.weight(.semibold))
-            HStack(alignment: .top, spacing: 10) {
-                TemplateThumbnail(saved: selected, encoded: selected.flatMap { images[$0.template.file] }, size: CGSize(width: 88, height: 62))
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(selected?.name ?? "NINGUNA").font(.subheadline.weight(.semibold))
-                    Text(selected == nil ? "Elige una captura para este paso" : "\(selected!.template.width)×\(selected!.template.height) px").font(.caption).foregroundStyle(selected == nil ? .red : .secondary)
-                }
-            }
+            Text(action.kind == .CLICK_IMAGE ? "Imagen que hay que tocar" : action.kind == .WAIT_IMAGE ? "Imagen que hay que esperar" : "Imagen que hay que comprobar").font(.subheadline.weight(.semibold))
             if templates.isEmpty {
-                Text("No hay capturas guardadas. Ve a la pestaña Capturas para importar o recortar una.")
+                Text("Aún no hay capturas. Impórtalas en la pestaña Capturas.")
                     .font(.caption).foregroundStyle(.red)
             } else {
-                Text("Capturas disponibles para este paso").font(.caption.weight(.semibold))
-                Text("Pulsa una miniatura para cambiarla. La captura elegida queda marcada y no modifica los demás pasos.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if selected == nil { Text("Toca una captura para usarla en este paso.").font(.caption).foregroundStyle(.red) }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 8) {
                         ForEach(templates) { saved in
@@ -536,21 +553,17 @@ private struct ImageActionEditor: View {
                                 saved: saved,
                                 encoded: images[saved.template.file],
                                 isSelected: saved.id == action.templateId,
-                                onSelect: { action.templateId = saved.id }
+                                onSelect: { action.templateId = saved.id; renameForImage(&action, saved.name) }
                             )
                         }
                     }
                 }
             }
-            Picker("Cambiar captura de este paso", selection: $action.templateId) {
-                Text("Sin seleccionar").tag("")
-                ForEach(templates) { saved in Text(saved.name).tag(saved.id) }
-            }.pickerStyle(.menu)
             if action.kind == .CLICK_IMAGE {
                 Picker("Dónde pulsar", selection: $action.clickTarget) {
-                    Text("Centro de la coincidencia").tag(MacroClickTarget.CENTER)
-                    Text("Desplazamiento relativo").tag(MacroClickTarget.OFFSET)
-                    Text("Punto fijo de pantalla").tag(MacroClickTarget.FIXED)
+                    Text("Tocar en el centro").tag(MacroClickTarget.CENTER)
+                    Text("Tocar desplazado").tag(MacroClickTarget.OFFSET)
+                    Text("Tocar en otro punto de la pantalla").tag(MacroClickTarget.FIXED)
                 }.pickerStyle(.menu)
                 if action.clickTarget == .OFFSET || action.clickTarget == .FIXED {
                     HStack {
@@ -559,7 +572,7 @@ private struct ImageActionEditor: View {
                     }
                 }
                 Picker("Tipo de clic", selection: $action.clickStyle) {
-                    Text("Un clic").tag(MacroClickStyle.SINGLE); Text("Doble clic").tag(MacroClickStyle.DOUBLE); Text("Pulsación larga").tag(MacroClickStyle.LONG)
+                    Text("Un toque").tag(MacroClickStyle.SINGLE); Text("Doble toque").tag(MacroClickStyle.DOUBLE); Text("Pulsación larga").tag(MacroClickStyle.LONG)
                 }.pickerStyle(.menu)
                 IntegerField(title: "Buscarla durante (s, 0 = lo de la macro)", value: Binding(get: { action.waitMs / 1000 }, set: { action.waitMs = $0 * 1000 }), minimum: 0, maximum: 3_600)
             }
@@ -603,19 +616,40 @@ private struct CaptureChoice: View {
 
 private struct GestureEditor: View {
     @Binding var action: MacroAction
+    private var recorded: Bool { action.points.count > 2 }
+    private var swipe: Binding<Bool> {
+        Binding(get: { action.points.count == 2 }, set: { wanted in
+            guard let first = action.points.first else { return }
+            if wanted && action.points.count == 1 {
+                action.points.append(MacroPoint(x: first.x, y: max(0, first.y - 0.3)))
+                if action.durationMs < 300 { action.durationMs = 300 }
+            } else if !wanted && action.points.count == 2 { action.points = [first] }
+        })
+    }
+    private func coordinate(_ index: Int, _ x: Bool) -> Binding<Float> {
+        Binding(get: { index < action.points.count ? (x ? action.points[index].x : action.points[index].y) * 100 : 50 },
+                set: { v in guard index < action.points.count else { return }; let c = min(max(v, 0), 100) / 100; if x { action.points[index].x = c } else { action.points[index].y = c } })
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("Coordenadas relativas a la pantalla (0–100 %)").font(.footnote).foregroundStyle(.secondary)
             if action.points.isEmpty { Button("Añadir punto") { action.points = [MacroPoint(x: 0.5, y: 0.5)] } }
-            else {
+            else if recorded {
+                Text("Trayectoria grabada de \(action.points.count) puntos. Para cambiarla, vuelve a grabarla en Android.").font(.footnote).foregroundStyle(.secondary)
+            } else {
+                Picker("Tipo", selection: swipe) { Text("👆 Tocar").tag(false); Text("↕ Deslizar").tag(true) }.pickerStyle(.segmented)
                 HStack {
-                    DecimalField(title: "X (%)", value: Binding(get: { action.points[0].x * 100 }, set: { action.points[0].x = $0 / 100 }))
-                    DecimalField(title: "Y (%)", value: Binding(get: { action.points[0].y * 100 }, set: { action.points[0].y = $0 / 100 }))
+                    DecimalField(title: swipe.wrappedValue ? "Desde X (%)" : "X (%)", value: coordinate(0, true))
+                    DecimalField(title: swipe.wrappedValue ? "Desde Y (%)" : "Y (%)", value: coordinate(0, false))
                 }
-                if action.points.count > 1 { Text("Trayectoria guardada: \(action.points.count) puntos. El trazado completo se conserva en el JSON.").font(.caption).foregroundStyle(.secondary) }
+                if swipe.wrappedValue {
+                    HStack {
+                        DecimalField(title: "Hasta X (%)", value: coordinate(1, true))
+                        DecimalField(title: "Hasta Y (%)", value: coordinate(1, false))
+                    }
+                }
+                Text("0 = arriba/izquierda, 100 = abajo/derecha. Para marcarlo tocando la pantalla, usa «Elegir el punto tocando la pantalla» en Android.").font(.caption).foregroundStyle(.secondary)
             }
-            SecondsField(title: "Duración del toque o deslizamiento (s)", value: $action.durationMs, minimum: 1, maximum: 60_000)
-            Text("Para obtener el punto exacto sin escribirlo, abre esta misma acción en Android y pulsa «Elegir X/Y tocando la pantalla».").font(.caption).foregroundStyle(.secondary)
+            SecondsField(title: swipe.wrappedValue ? "Duración del deslizamiento (s)" : "Duración del toque (s)", value: $action.durationMs, minimum: 1, maximum: 60_000)
         }
     }
 }
@@ -645,7 +679,7 @@ private struct BranchEditor: View {
                 Text(title).font(.subheadline.weight(.semibold)); Spacer()
                 Menu {
                     macroKindMenu { actions.append(defaultAction($0)) }
-                } label: { Label("Añadir acción", systemImage: "plus.circle").font(.caption) }
+                } label: { Label("Añadir paso", systemImage: "plus.circle").font(.caption) }
             }
             if actions.isEmpty { Text(title == "SI NO" ? "Vacío = continuar con el siguiente paso" : "Todavía no hay acciones").font(.caption).foregroundStyle(.secondary) }
             ForEach(Array(actions.indices), id: \.self) { index in
@@ -673,6 +707,7 @@ private struct BranchActionRow: View {
                     Text("Un número de veces").tag("")
                     ForEach(templates) { saved in Text("Hasta ver «\(saved.name)»").tag(saved.id) }
                 }.pickerStyle(.menu)
+                .onChange(of: action.templateId) { id in if let name = templates.first(where: { $0.id == id })?.name { renameForImage(&action, name) } }
                 IntegerField(title: action.templateId.isEmpty ? "Cuántas veces (1–100)" : "Como máximo (1–100 veces)", value: Binding(get: { Int64(action.count) }, set: { action.count = Int($0) }), minimum: 1, maximum: 100)
             }
             else if action.kind == .STOP { Text("Termina la macro aquí.").font(.caption).foregroundStyle(.secondary) }
@@ -714,7 +749,17 @@ private struct CaptureEditorRow: View {
             VStack(alignment: .leading, spacing: 5) {
                 TextField("Nombre de la captura", text: $saved.name).textFieldStyle(.roundedBorder)
                 Text("\(saved.template.width)×\(saved.template.height) px · pantalla \(saved.template.screenWidth)×\(saved.template.screenHeight)").font(.caption).foregroundStyle(.secondary)
-                HStack { Button(isPrincipal ? "Principal" : "Hacer principal", action: onMakePrincipal).buttonStyle(.bordered).disabled(isPrincipal); Button("Recortar más", action: onRecrop).buttonStyle(.bordered); Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }.buttonStyle(.bordered) }
+                HStack {
+                    if isPrincipal { Label("Imagen de inicio", systemImage: "flag.fill").font(.caption.weight(.semibold)).foregroundStyle(.tint) }
+                    Spacer()
+                    Menu {
+                        Button(action: onRecrop) { Label("Recortar más", systemImage: "crop") }
+                        Button(action: onMakePrincipal) { Label("Usar como imagen de inicio", systemImage: "flag") }.disabled(isPrincipal)
+                        Divider()
+                        Button(role: .destructive, action: onDelete) { Label("Borrar", systemImage: "trash") }
+                    } label: { Image(systemName: "ellipsis.circle").font(.title2) }
+                    .accessibilityLabel("Opciones de \(saved.name)")
+                }
             }
         }
     }
@@ -773,6 +818,11 @@ private struct LabeledField<Content: View>: View {
     }
 }
 
+/// 50 → "50"; 12,5 → "12,5".
+private func decimalText(_ value: Float) -> String {
+    abs(value - value.rounded()) < 0.05 ? String(Int(value.rounded())) : String(format: "%.1f", value).replacingOccurrences(of: ".", with: ",")
+}
+
 /// Acepta "1,5" o "1.5".
 private func parseDecimal(_ text: String) -> Double? {
     Double(text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")).flatMap { $0.isFinite ? $0 : nil }
@@ -805,9 +855,9 @@ private struct DecimalField: View {
     let title: String
     @Binding var value: Float
     @State private var text: String
-    init(title: String, value: Binding<Float>) { self.title = title; _value = value; _text = State(initialValue: String(format: "%.2f", value.wrappedValue)) }
+    init(title: String, value: Binding<Float>) { self.title = title; _value = value; _text = State(initialValue: decimalText(value.wrappedValue)) }
     var body: some View {
-        LabeledField(title: title) { TextField(title, text: $text).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onSubmit { if let parsed = parseDecimal(text) { value = Float(parsed) } }.onChange(of: value) { text = String(format: "%.2f", $0) }.onChange(of: text) { if let parsed = parseDecimal($0) { value = Float(parsed) } } }
+        LabeledField(title: title) { TextField(title, text: $text).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onSubmit { if let parsed = parseDecimal(text) { value = Float(parsed) } }.onChange(of: value) { if parseDecimal(text).map(Float.init) != $0 { text = decimalText($0) } }.onChange(of: text) { if let parsed = parseDecimal($0) { value = Float(parsed) } } }
     }
 }
 
@@ -822,46 +872,49 @@ private struct HelpRow: View {
 }
 
 private func kindLabel(_ kind: MacroKind) -> String {
+    // Mismos nombres que en Android, para no liarse al pasar de una app a otra.
     switch kind {
-    case .GESTURE: return "Pulsación / trayectoria"
+    case .GESTURE: return "Tocar / deslizar"
+    case .CLICK_IMAGE: return "Buscar imagen y tocarla"
     case .WAIT: return "Esperar"
-    case .WAIT_IMAGE: return "Esperar hasta ver una imagen"
+    case .WAIT_IMAGE: return "Esperar a ver una imagen"
+    case .IF_IMAGE: return "Si se ve una imagen…"
+    case .IF_COLOR: return "Si se ve un color…"
     case .REPEAT: return "Repetir pasos"
-    case .CLICK_IMAGE: return "Detectar imagen y hacer clic"
-    case .IF_IMAGE: return "SI SE VE UNA IMAGEN"
-    case .IF_COLOR: return "SI SE VE UN COLOR"
-    case .HOME: return "Ir al inicio"
-    case .BACK: return "Volver atrás"
-    case .RECENTS: return "Aplicaciones recientes"
-    case .CLOSE_ACTIVE: return "Cerrar aplicación activa"
-    case .NOTIFICATIONS: return "Desplegar notificaciones"
-    case .QUICK_SETTINGS: return "Desplegar ajustes rápidos"
-    case .OPEN_APP: return "Abrir aplicación"
     case .STOP: return "Parar la macro"
+    case .OPEN_APP: return "Abrir app o juego"
+    case .BACK: return "Botón Atrás"
+    case .HOME: return "Botón Inicio"
+    case .RECENTS: return "Apps recientes"
+    case .CLOSE_ACTIVE: return "Cerrar la app actual"
+    case .NOTIFICATIONS: return "Abrir notificaciones"
+    case .QUICK_SETTINGS: return "Ajustes rápidos"
     }
 }
 
 @ViewBuilder private func macroKindMenu(onChoose: @escaping (MacroKind) -> Void) -> some View {
-    Section("Gestos e imágenes") {
-        Button(kindLabel(.GESTURE)) { onChoose(.GESTURE) }
-        Button(kindLabel(.CLICK_IMAGE)) { onChoose(.CLICK_IMAGE) }
-    }
-    Section("Condiciones") {
-        Button(kindLabel(.IF_IMAGE)) { onChoose(.IF_IMAGE) }
-        Button(kindLabel(.IF_COLOR)) { onChoose(.IF_COLOR) }
-    }
-    Section("Control de la secuencia") {
-        Button(kindLabel(.WAIT)) { onChoose(.WAIT) }
-        Button(kindLabel(.WAIT_IMAGE)) { onChoose(.WAIT_IMAGE) }
-        Button(kindLabel(.REPEAT)) { onChoose(.REPEAT) }
-        Button(kindLabel(.STOP)) { onChoose(.STOP) }
-    }
-    Section("Dispositivo y aplicación") {
-        ForEach([MacroKind.OPEN_APP, .BACK, .HOME, .RECENTS, .CLOSE_ACTIVE, .NOTIFICATIONS, .QUICK_SETTINGS], id: \.self) { kind in
-            Button(kindLabel(kind)) { onChoose(kind) }
-        }
+    // Mismos grupos que «Añadir paso» en Android.
+    Section("Tocar la pantalla") { ForEach([MacroKind.GESTURE, .CLICK_IMAGE], id: \.self) { kind in Button(kindLabel(kind)) { onChoose(kind) } } }
+    Section("Esperar") { ForEach([MacroKind.WAIT, .WAIT_IMAGE], id: \.self) { kind in Button(kindLabel(kind)) { onChoose(kind) } } }
+    Section("Decidir y repetir") { ForEach([MacroKind.IF_IMAGE, .IF_COLOR, .REPEAT, .STOP], id: \.self) { kind in Button(kindLabel(kind)) { onChoose(kind) } } }
+    Section("Android y apps") { ForEach([MacroKind.OPEN_APP, .CLOSE_ACTIVE, .BACK, .HOME, .RECENTS, .NOTIFICATIONS, .QUICK_SETTINGS], id: \.self) { kind in Button(kindLabel(kind)) { onChoose(kind) } } }
+}
+
+/// Como en Android: al elegir la imagen, el paso se llama solo «Tocar «Jugar»» si aún tenía
+/// el nombre genérico o uno puesto así automáticamente.
+private func renameForImage(_ action: inout MacroAction, _ image: String) {
+    let generic = action.name.isEmpty || action.name == kindLabel(action.kind).replacingOccurrences(of: "…", with: "") || (action.name.contains("«") && action.name.hasSuffix("»"))
+    guard generic else { return }
+    switch action.kind {
+    case .CLICK_IMAGE: action.name = "Tocar «\(image)»"
+    case .WAIT_IMAGE: action.name = "Esperar «\(image)»"
+    case .IF_IMAGE: action.name = "Si se ve «\(image)»"
+    case .REPEAT: action.name = "Repetir hasta ver «\(image)»"
+    default: break
     }
 }
+
+private func plural(_ n: Int, _ one: String, _ many: String) -> String { "\(n) \(n == 1 ? one : many)" }
 
 private func recursiveActionCount(_ actions: [MacroAction]) -> Int {
     actions.reduce(0) { $0 + 1 + recursiveActionCount($1.children) + recursiveActionCount($1.otherwise) }
@@ -870,14 +923,15 @@ private func recursiveActionCount(_ actions: [MacroAction]) -> Int {
 private func branchSummary(_ actions: [MacroAction], empty: String) -> String {
     let enabled = actions.filter(\.enabled)
     guard !enabled.isEmpty else { return empty }
-    let shown = enabled.prefix(3).map(readableActionSummary).joined(separator: " → ")
+    let shown = enabled.prefix(3).map { readableActionSummary($0) }.joined(separator: " → ")
     return enabled.count > 3 ? "\(shown) +\(enabled.count - 3)" : shown
 }
 
-private func readableActionSummary(_ action: MacroAction) -> String {
+private func readableActionSummary(_ action: MacroAction, image: String? = nil) -> String {
+    let img = image.map { "«\($0)»" } ?? "la imagen"
     switch action.kind {
     case .WAIT: return "esperar \(readableDuration(action.durationMs))"
-    case .WAIT_IMAGE: return "espera la imagen (máx. \(readableDuration(action.durationMs)))" + (action.skipIfMissing ? " · si no, sigue" : "")
+    case .WAIT_IMAGE: return "espera \(img) (máx. \(readableDuration(action.durationMs)))" + (action.skipIfMissing ? " · si no, sigue" : "")
     case .OPEN_APP: return "abrir \(action.packageName)"
     case .CLOSE_ACTIVE: return "cerrar aplicación"
     case .GESTURE:
@@ -885,10 +939,10 @@ private func readableActionSummary(_ action: MacroAction) -> String {
         if p.count <= 1 { return "toca en X \(Int((p.first?.x ?? 0.5) * 100)) % · Y \(Int((p.first?.y ?? 0.5) * 100)) %" }
         if p.count == 2 { return "desliza de (\(Int(p[0].x * 100)) %, \(Int(p[0].y * 100)) %) a (\(Int(p[1].x * 100)) %, \(Int(p[1].y * 100)) %)" }
         return "trayectoria de \(p.count) puntos"
-    case .CLICK_IMAGE: return "toca la imagen" + (action.waitMs > 0 ? " (busca \(readableDuration(action.waitMs)))" : "") + (action.skipIfMissing ? " · si no está, sigue" : "")
-    case .IF_IMAGE: return "comprobar imagen"
+    case .CLICK_IMAGE: return "toca \(img)" + (action.waitMs > 0 ? " (busca \(readableDuration(action.waitMs)))" : "") + (action.skipIfMissing ? " · si no está, sigue" : "")
+    case .IF_IMAGE: return "si se ve \(img)"
     case .IF_COLOR: return "comprobar color"
-    case .REPEAT: return action.templateId.isEmpty ? "repetir \(action.count) veces" : "repetir hasta ver la imagen (máx. \(action.count))"
+    case .REPEAT: return action.templateId.isEmpty ? "repetir \(action.count) veces" : "repetir hasta ver \(img) (máx. \(action.count))"
     case .STOP: return "termina la macro"
     case .HOME: return "ir al inicio"
     case .BACK: return "volver"
@@ -931,16 +985,14 @@ private func projectExecutionIssues(_ project: MacroProject) -> [String] {
 }
 
 private func defaultAction(_ kind: MacroKind) -> MacroAction {
+    let name = kindLabel(kind).replacingOccurrences(of: "…", with: "")
     switch kind {
-    case .WAIT: return MacroAction(kind: kind, name: "Esperar 1 segundo", durationMs: 1000)
-    case .WAIT_IMAGE: return MacroAction(kind: kind, name: "Esperar hasta ver el lobby", durationMs: 60_000)
-    case .REPEAT: return MacroAction(kind: kind, name: "Repetir pasos", count: 2)
-    case .CLICK_IMAGE: return MacroAction(kind: kind, name: "Detectar imagen y hacer clic")
-    case .IF_IMAGE: return MacroAction(kind: kind, name: "SI SE VE UNA IMAGEN")
-    case .IF_COLOR: return MacroAction(kind: kind, name: "SI SE VE UN COLOR")
-    case .OPEN_APP: return MacroAction(kind: kind, name: "Abrir aplicación", packageName: "es.macrostudio")
-    case .CLOSE_ACTIVE: return MacroAction(kind: kind, name: "Cerrar aplicación activa", durationMs: 1000)
-    default: return MacroAction(kind: kind, name: kindLabel(kind))
+    case .WAIT: return MacroAction(kind: kind, name: name, durationMs: 1000)
+    case .WAIT_IMAGE: return MacroAction(kind: kind, name: name, durationMs: 30_000)
+    case .REPEAT: return MacroAction(kind: kind, name: name, count: 3)
+    case .OPEN_APP: return MacroAction(kind: kind, name: name, packageName: "es.macrostudio")
+    case .CLOSE_ACTIVE: return MacroAction(kind: kind, name: name, durationMs: 1000)
+    default: return MacroAction(kind: kind, name: name)
     }
 }
 

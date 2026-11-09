@@ -8,6 +8,15 @@ El archivo para instalar es `outputs/PrisonMacro-0.4.0.apk`. Es una compilación
 
 El rechazo inicial de BlueStacks quedó confirmado en su registro como `INSTALL_FAILED_TEST_ONLY`. No era un ZIP corrupto. La APK publicada está firmada y sin `testOnly`; el puente ADB de BlueStacks Air se desconectó durante esta última instalación, así que allí debe instalarse desde el botón APK.
 
+## Novedades 0.6.2 (probado en emulador Android 17 y simulador de iPhone)
+
+- **Arreglado (grave):** la app podía **cerrarse de golpe al girar la pantalla** con la captura activa (`CaptureService` cerraba el `ImageReader` viejo desde otro hilo mientras se copiaba un fotograma). Ahora el cambio se hace en el hilo de los fotogramas; 16 giros seguidos sin fallos.
+- **Arreglado:** tras girar, la captura salía encogida/desplazada. Se suelta la superficie antes de `resize`, se escuchan `DisplayListener` y `onCapturedContentResize`, y la detección espera un fotograma nuevo en vez de parar la macro.
+- Panel: 📷 y ▶ piden solos el permiso de captura; el recorte se abre con la orientación de la captura.
+- Inicio más limpio («Nueva macro» arriba, sin aviso permanente de captura); «Añadir paso» en cuadrícula; los pasos con imagen se nombran solos.
+- iPhone: mismos nombres de pasos que Android, Tocar/Deslizar con Desde/Hasta, selector de imagen simple, números «50» en vez de «50.00», menú ⋯ en Capturas, Ayuda al día; versión 0.6.2. `install-ios.sh` instala la configuración Release.
+- Probado de punta a punta: grabar, reproducir, capturar y recortar, buscar imagen y tocarla (100 % de parecido), actualizar por wifi (0.6.1 → 0.6.2) y viaje Android → iPhone → Android con datos reales (`app/src/test/resources/ios-roundtrip.json`). 44 pruebas.
+
 ## Novedades 0.6.1
 
 - **⬆ Actualizar la app por wifi** (⚙ Ajustes): `scripts/serve-updates.sh` publica en `:8765` solo `outputs/update/` (`version.json` + APK); la app compara `versionCode`, descarga, comprueba el SHA-256 y la instala con `PackageInstaller` (Android pide confirmación). Solo acepta direcciones de red local (`Updater.normalizeAddress`). Desde BlueStacks en el mismo Mac: `10.0.2.2:8765`.

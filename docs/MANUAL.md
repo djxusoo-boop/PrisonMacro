@@ -1,8 +1,8 @@
-# Manual · PrisonMacro 0.6.1
+# Manual · PrisonMacro 0.6.2
 
 ## Instalar
 
-En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.6.1.apk`. Se instala encima de la versión anterior y conserva tus macros.
+En BlueStacks usa el botón APK de la barra lateral y elige `outputs/PrisonMacro-0.6.2.apk`. Se instala encima de la versión anterior y conserva tus macros.
 
 ### Actualizar sin botón APK (desde 0.6.1)
 
@@ -55,6 +55,8 @@ Ahora la captura **ya no se corta al girar la pantalla** (por ejemplo, al abrir 
 ### Panel flotante
 
 `⠿ ▶ ■ ● 📷 ⌂ ✕` — arrastra desde **⠿** para moverlo. **▶** reproduce (y pasa a **Ⅱ** para pausar), **■** para, **●** graba, **📷** guarda una captura en la biblioteca, **⌂** vuelve a PrisonMacro, **✕** oculta el panel.
+
+Si pulsas 📷 o ▶ en el panel y falta el permiso de captura, PrisonMacro se abre sola, Android te lo pide y vuelves a tu juego con el panel listo.
 
 Mientras la macro funciona, el panel muestra la vuelta y el paso en curso. Cuando termina o se para por un problema (por ejemplo, una imagen que no aparece), sale un aviso encima del juego explicando por qué.
 

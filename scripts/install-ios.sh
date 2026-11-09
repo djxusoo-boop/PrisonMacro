@@ -20,13 +20,14 @@ echo "Compilando PrisonMacro para $device_id..."
 xcodebuild \
   -project "$project" \
   -scheme PrisonMacro \
+  -configuration Release \
   -destination "id=$device_id" \
   -derivedDataPath "$derived" \
   -allowProvisioningUpdates \
   -allowProvisioningDeviceRegistration \
   build
 
-app="$derived/Build/Products/Debug-iphoneos/PrisonMacro.app"
+app="$derived/Build/Products/Release-iphoneos/PrisonMacro.app"
 if [[ ! -d "$app" ]]; then
   echo "La compilación no produjo $app" >&2
   exit 1

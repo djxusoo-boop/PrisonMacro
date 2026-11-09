@@ -219,6 +219,19 @@ class CoreTest {
         assertThrows(IllegalArgumentException::class.java) { u.parseInfo(ok.replace("PrisonMacro-0.7.0.apk","../secreto.apk")) }
         assertThrows(IllegalArgumentException::class.java) { u.parseInfo(ok.replace("a".repeat(64),"zz")) }
     }
+    /** ios-roundtrip.json: macro grabada en el emulador Android, importada en el simulador de
+     * iPhone (copia completa) y guardada por la app de iPhone. Debe volver entera a Android. */
+    @Test fun androidMacroSurvivesTripThroughIphone() {
+        val json=javaClass.classLoader!!.getResource("ios-roundtrip.json")!!.readText()
+        val p=es.macrostudio.projects.ProjectStore.decode(json)
+        assertNull(p.validate()); assertTrue(p.executionIssues().isEmpty())
+        assertEquals(0,p.repeatCount); assertEquals(45,p.maxMinutes); assertEquals(1,p.templates.size)
+        assertEquals(12,countActions(p.actions))
+        val repeat=p.actions.first { it.kind==Kind.REPEAT }
+        assertEquals(p.templates[0].id,repeat.templateId); assertEquals(5,repeat.count)
+        assertEquals(Kind.STOP,p.actions.first { it.kind==Kind.IF_IMAGE }.children.single().kind)
+        assertEquals(0.5626f,p.actions[2].points.single().y,0.001f)
+    }
     @Test fun colorTargetMapsBackToItsStep() {
         assertEquals("abc",stepOfCaptureTarget(Studio.COLOR_PREFIX+"abc"))
         assertEquals("abc",stepOfCaptureTarget("abc"))
