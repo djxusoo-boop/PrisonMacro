@@ -50,7 +50,7 @@ class MacroAccessibilityService: AccessibilityService() {
      * reproduce el toque anterior, los toques pasan al juego sin grabarse. */
     private var recordArmed=false; private var recordedCount=0
     private fun dp(value: Int)=(value*resources.displayMetrics.density).toInt()
-    override fun onServiceConnected() { Studio.init(this); es.macrostudio.engine.Watch.enabled=getSharedPreferences("studio",0).getBoolean("watchMode",false); instance=this; wm=getSystemService(WindowManager::class.java); Studio.accessibilityReady=true; if(!Studio.running && !Studio.recording) Studio.status="Accesibilidad conectada"; Studio.log("Accesibilidad conectada")
+    override fun onServiceConnected() { Studio.init(this); es.macrostudio.engine.Watch.enabled=getSharedPreferences("studio",0).getBoolean("watchMode",false); barCollapsed=getSharedPreferences("studio",0).getBoolean("barCollapsed",false); instance=this; wm=getSystemService(WindowManager::class.java); Studio.accessibilityReady=true; if(!Studio.running && !Studio.recording) Studio.status="Accesibilidad conectada"; Studio.log("Accesibilidad conectada")
         // Si la macro se paró sola (o Android cerró la app) y tenía que seguir, vuelve a empezar.
         es.macrostudio.engine.Engine.resumePending(15_000)
         // Si Android cerró PrisonMacro con la barra puesta (p. ej. «Cerrar todo»), la barra vuelve sola.
@@ -97,6 +97,16 @@ class MacroAccessibilityService: AccessibilityService() {
     enum class BarMode { CONTROL, CAPTURE, BURST }
     private var barMode=BarMode.CONTROL
     private var barX=0; private var barY=-1
+    /** Panel plegado: solo se ve una burbuja (el asa ⠿). Tocar el asa pliega o despliega;
+     * arrastrarla lo mueve. Se recuerda entre sesiones. */
+    private var barCollapsed=false
+    /** Plegado solo en el panel normal. Si la app pide algo («Abre tu juego y pulsa ▶»), se enseña desplegado; al pulsar ▶ se vuelve a plegar. */
+    private fun collapsedNow()=barCollapsed && barMode==BarMode.CONTROL && !Studio.recording && barHint.isBlank()
+    private fun toggleCollapsed() {
+        barCollapsed=!barCollapsed
+        getSharedPreferences("studio",0).edit().putBoolean("barCollapsed",barCollapsed).apply()
+        refreshBar()
+    }
 
     /** Panel de control: ▶/Ⅱ, ■, grabar, capturar y volver a la app. */
     fun showBar(hint: String="") { barHint=hint; barMode=BarMode.CONTROL; ensureBar(); refreshBar(); if(bar!=null) es.macrostudio.engine.KeepAlive.barShown(this,true) }
@@ -248,7 +258,7 @@ class MacroAccessibilityService: AccessibilityService() {
 
     private fun applyWatch() {
         val on=es.macrostudio.engine.Watch.enabled && bar!=null
-        watchBox?.visibility=if(on) View.VISIBLE else View.GONE
+        watchBox?.visibility=if(on && !collapsedNow()) View.VISIBLE else View.GONE
         if(on && marksView==null) {
             val view=MarksView(this)
             val lp=WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.MATCH_PARENT,WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -291,8 +301,14 @@ class MacroAccessibilityService: AccessibilityService() {
         val root=bar ?: return
         val row=barRow ?: return
         row.removeAllViews()
-        row.addView(dragHandle(root))
         statusView=null
+        if(collapsedNow()) {
+            row.addView(dragHandle(root,collapsed=true))
+            watchBox?.visibility=View.GONE
+            return
+        }
+        row.addView(dragHandle(root))
+        watchBox?.visibility=if(es.macrostudio.engine.Watch.enabled) View.VISIBLE else View.GONE
         fun button(label: String, description: String, color: Int=Color.rgb(44,56,80), enabled: Boolean=true, widthDp: Int=52, block: ()->Unit) {
             row.addView(Button(this).apply {
                 text=label; isAllCaps=false; textSize=15f; minimumWidth=0; minWidth=0; minimumHeight=0; minHeight=0
@@ -352,20 +368,33 @@ class MacroAccessibilityService: AccessibilityService() {
         row.addView(view,LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,LinearLayout.LayoutParams.WRAP_CONTENT))
     }
 
-    private fun dragHandle(row: LinearLayout): View = TextView(this).apply {
-        text="⠿"; textSize=20f; setTextColor(Color.rgb(160,180,200)); gravity=Gravity.CENTER; contentDescription="Mover panel"
-        var startX=0f; var startY=0f; var originX=0; var originY=0
+    /** Asa del panel: arrastrar = mover; tocar (sin moverse) = plegar o desplegar. */
+    private fun dragHandle(row: LinearLayout, collapsed: Boolean=false): View = TextView(this).apply {
+        text="⠿"; textSize=if(collapsed) 24f else 20f; gravity=Gravity.CENTER
+        setTextColor(when {
+            !collapsed -> Color.rgb(160,180,200)
+            Studio.running && Studio.paused -> Color.rgb(255,210,90)
+            Studio.running -> Color.rgb(90,225,140)
+            else -> Color.rgb(160,180,200)
+        })
+        contentDescription=if(collapsed) "Desplegar panel (arrastra para moverlo)" else "Mover panel (toca para plegarlo)"
+        val slop=android.view.ViewConfiguration.get(this@MacroAccessibilityService).scaledTouchSlop
+        var startX=0f; var startY=0f; var originX=0; var originY=0; var moved=false
         setOnTouchListener { _, e ->
             when(e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { startX=e.rawX; startY=e.rawY; originX=barX; originY=barY }
+                MotionEvent.ACTION_DOWN -> { startX=e.rawX; startY=e.rawY; originX=barX; originY=barY; moved=false }
                 MotionEvent.ACTION_MOVE -> {
-                    barX=(originX+(e.rawX-startX)).toInt().coerceAtLeast(0); barY=(originY+(e.rawY-startY)).toInt().coerceAtLeast(0)
-                    runCatching { wm.updateViewLayout(row,(row.layoutParams as WindowManager.LayoutParams).apply { x=barX; y=barY }) }
+                    if(!moved && (abs(e.rawX-startX)>slop || abs(e.rawY-startY)>slop)) moved=true
+                    if(moved) {
+                        barX=(originX+(e.rawX-startX)).toInt().coerceAtLeast(0); barY=(originY+(e.rawY-startY)).toInt().coerceAtLeast(0)
+                        runCatching { wm.updateViewLayout(row,(row.layoutParams as WindowManager.LayoutParams).apply { x=barX; y=barY }) }
+                    }
                 }
+                MotionEvent.ACTION_UP -> if(!moved && !capturing && barMode==BarMode.CONTROL && !Studio.recording) toggleCollapsed()
             }
             true
         }
-        layoutParams=LinearLayout.LayoutParams(dp(26),dp(44))
+        layoutParams=if(collapsed) LinearLayout.LayoutParams(dp(44),dp(44)) else LinearLayout.LayoutParams(dp(26),dp(44))
     }
 
     private fun openApp() {
