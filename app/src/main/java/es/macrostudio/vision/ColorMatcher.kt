@@ -14,10 +14,12 @@ object ColorMatcher {
 
     private fun candidate(screen: Pixels,target: Int,tolerance: Int,x: Int,y: Int): ColorMatch? {
         if(x !in 0 until screen.width || y !in 0 until screen.height) return null
+        if(screen.isIgnored(y*screen.width+x)) return null
         val center=distance(screen.colors[y*screen.width+x],target)
         if(center>tolerance) return null
         var matches=0; var total=0
         for(py in maxOf(0,y-1)..minOf(screen.height-1,y+1)) for(px in maxOf(0,x-1)..minOf(screen.width-1,x+1)) {
+            if(screen.isIgnored(py*screen.width+px)) continue
             total++; if(distance(screen.colors[py*screen.width+px],target)<=tolerance) matches++
         }
         val required=maxOf(2,(total*0.45).toInt())

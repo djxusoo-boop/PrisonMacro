@@ -11,20 +11,31 @@ import es.macrostudio.gestures.MacroAccessibilityService
 
 @Composable fun PrisonApp(activity: ComponentActivity) {
     val c = rememberAppController(activity)
+    LaunchedEffect(Unit) { c.dropLeftoverDraft() }
     // Al volver de capturar, recortar o elegir un punto, reabre el paso correspondiente.
     LaunchedEffect(Studio.requestedScreen, Studio.reopenActionId, Studio.panelNeedsCapture) {
         Studio.requestedScreen?.let { name ->
             Studio.requestedScreen = null
-            c.open(when (name) { "images" -> Screen.IMAGES; "home" -> Screen.HOME; else -> Screen.EDITOR })
+            c.open(when (name) { "images" -> Screen.IMAGES; "home" -> Screen.HOME; "settings" -> Screen.SETTINGS; else -> Screen.EDITOR })
         }
         Studio.panelNeedsCapture?.let { what ->
             Studio.panelNeedsCapture = null
             if (what == "capture") c.captureFor(Studio.pendingTemplateActionId)
-            else c.withCapture { MacroAccessibilityService.instance?.showBar(); activity.moveTaskToBack(true); c.toast("Listo. Pulsa ▶ en el panel para empezar") }
+            else if (what == "burst") c.startBurst()
+            else c.withCapture { MacroAccessibilityService.instance?.showBar("👉 Listo: pulsa ▶ para empezar"); activity.moveTaskToBack(true) }
         }
         Studio.reopenActionId?.let { id ->
             Studio.reopenActionId = null
-            if (findAction(Studio.project.actions, id) != null) { c.open(Screen.EDITOR); c.editAction(id) }
+            findAction(Studio.project.actions, id)?.let { a ->
+                c.open(Screen.EDITOR)
+                // Paso sencillo que ya tiene lo que necesitaba: vuelve a la lista (no hace falta pulsar Guardar otra vez).
+                val hasImage = Studio.project.templates.any { it.id == a.templateId }
+                when {
+                    a.kind in setOf(Kind.CLICK_IMAGE, Kind.WAIT_IMAGE, Kind.WHEN_IMAGE) && hasImage -> c.toast("✓ Listo: «${a.name}»")
+                    a.kind == Kind.GESTURE -> Unit
+                    else -> c.editAction(id)
+                }
+            }
         }
     }
     PrisonTheme {
@@ -40,7 +51,7 @@ import es.macrostudio.gestures.MacroAccessibilityService
         }
         c.editingId?.let { id ->
             val action = findAction(Studio.project.actions, id)
-            if (action == null) { c.editingId = null; c.draftId = null } else key(id) { ActionEditor(c, action) }
+            if (action == null) { c.editingId = null; c.draftId = null } else key(id, action.kind) { ActionEditor(c, action) } // otro tipo de paso = editor nuevo
         }
         AppDialogs(c)
     }

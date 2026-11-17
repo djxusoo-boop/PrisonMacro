@@ -260,4 +260,264 @@ class CoreTest {
         val revoked=DeviceSession("c","Mac","macOS",now-1_000,revoked=true)
         assertEquals(1,activeSessionCount(listOf(current,old,revoked),now))
     }
+    @Test fun mergesWaitStepsIntoNeighbourDelays() {
+        val list=listOf(
+            Action(id="o",kind=Kind.OPEN_APP,name="Abrir",packageName="com.a.b"),
+            Action(id="w1",kind=Kind.WAIT,name="Esperar",durationMs=40_000),
+            Action(id="b",kind=Kind.BACK,name="Atrás"),
+            Action(id="w2",kind=Kind.WAIT,name="Esperar",durationMs=2_000),
+            Action(id="r",kind=Kind.REPEAT,name="Repetir",count=2,children=listOf(Action(id="w3",kind=Kind.WAIT,name="E",durationMs=1_000),Action(id="h",kind=Kind.HOME,name="Inicio")))
+        )
+        val (merged,n)=es.macrostudio.ui.mergeWaits(list)
+        assertEquals(3,n)
+        assertEquals(listOf("o","b","r"),merged.map { it.id })
+        assertEquals(40_000L,merged[0].delayAfterMs); assertEquals(2_000L,merged[1].delayAfterMs)
+        assertEquals(listOf("h"),merged[2].children.map { it.id }); assertEquals(1_000L,merged[2].children[0].delayBeforeMs)
+        val p=Project(actions=merged)
+        val back=es.macrostudio.projects.ProjectStore.decode(es.macrostudio.projects.ProjectStore.encode(p))
+        assertEquals(40_000L,back.actions[0].delayAfterMs); assertEquals(1_000L,back.actions[2].children[0].delayBeforeMs)
+        assertNull(back.validate())
+    }
+    @Test fun movesStepsOutOfAndIntoBlocks() {
+        val inner=Action(id="i",kind=Kind.HOME,name="Inicio")
+        val block=Action(id="r",kind=Kind.REPEAT,name="Repetir",count=2,children=listOf(inner,Action(id="j",kind=Kind.BACK,name="Atrás")))
+        val list=listOf(Action(id="a",kind=Kind.BACK,name="A"),block,Action(id="z",kind=Kind.BACK,name="Z"))
+        assertEquals("r",parentOf(list,"i")?.id); assertNull(parentOf(list,"a"))
+        val out=moveOutOfBlock(list,"i")
+        assertEquals(listOf("a","r","i","z"),out.map { it.id }); assertEquals(listOf("j"),out[1].children.map { it.id })
+        val back=addInside(updateAction(out,"z") { null },"r",false,Action(id="z",kind=Kind.BACK,name="Z"))
+        assertEquals(listOf("j","z"),back.first { it.id=="r" }.children.map { it.id })
+        assertEquals(true to false,siblingPosition(list,"i")); assertEquals(false to true,siblingPosition(list,"z"))
+        assertEquals(setOf("r"),containerIds(list))
+    }
+
+    @Test fun rulesAreSavedAndFoundAnywhere() {
+        val tap=Action(id="t",kind=Kind.CLICK_IMAGE,templateId="img")
+        val rule=Action(id="w",kind=Kind.WHEN_IMAGE,templateId="img",waitMs=5000,afterRule=AfterRule.EXIT_LOOP,children=listOf(tap))
+        val off=Action(id="o",kind=Kind.WHEN_IMAGE,templateId="img",enabled=false)
+        val p=Project(templates=listOf(SavedTemplate(id="img",template=Template("a.png",0,0,10,10,100,100))),actions=listOf(Action(id="r",kind=Kind.REPEAT,children=listOf(rule)),off))
+        val back=es.macrostudio.projects.ProjectStore.decode(es.macrostudio.projects.ProjectStore.encode(p))
+        val again=findAction(back.actions,"w")!!
+        assertEquals(AfterRule.EXIT_LOOP,again.afterRule); assertEquals(5000L,again.waitMs); assertEquals(listOf("t"),again.children.map { it.id })
+        assertEquals(listOf("w"),ruleActions(back.actions).map { it.id })
+        assertTrue(back.needsScreenCapture())
+        assertEquals(setOf("r","w","o"),containerIds(back.actions))
+        // Sin pasos dentro, la regla avisa.
+        assertTrue(p.copy(actions=listOf(rule.copy(children=emptyList()))).executionIssues().any { it.contains("todavía no toca nada") })
+    }
+
+    @Test fun ignoresTheFloatingPanel() {
+        // La imagen buscada está dos veces: una «dentro del panel» (zona tapada) y otra en el juego.
+        val template=image(6,6,5)
+        val colors=IntArray(40*40) { 0xff102030.toInt() or ((it*37) and 0x3f) }
+        fun put(x0: Int, y0: Int) { for(y in 0 until 6) for(x in 0 until 6) colors[(y0+y)*40+x0+x]=template.colors[y*6+x] }
+        put(2,2); put(30,25)
+        val screen=Pixels(40,40,colors).masked(listOf(Area(0,0,20,12)))
+        val found=Matcher.find(screen,template)!!
+        assertEquals(30 to 25,found.x to found.y)
+        assertEquals(0.0,Matcher.score(screen,template,2,2),0.0)
+        // Medio tapada por el panel: se reconoce por la parte que se ve.
+        val half=Pixels(40,40,colors).masked(listOf(Area(30,25,33,31)))
+        assertEquals(1.0,Matcher.score(half,template,30,25),1e-9)
+    }
+
+    @Test fun deletesManyStepsAndImagesAtOnce() {
+        val t=Template("a.png",0,0,10,10,100,100)
+        val p=Project(template=t,startOnImage=true,templates=listOf(SavedTemplate(id="a",template=t),SavedTemplate(id="b",template=t.copy(file="b.png"))),
+            actions=listOf(Action(id="1",kind=Kind.CLICK_IMAGE,templateId="a"),Action(id="r",kind=Kind.REPEAT,children=listOf(Action(id="2",kind=Kind.WAIT_IMAGE,templateId="b",durationMs=30_000),Action(id="3")))))
+        assertEquals(setOf("1","r","2","3"),allActionIds(p.actions))
+        val fewer=removeActions(p.actions,setOf("1","2"))
+        assertEquals(listOf("r"),fewer.map { it.id }); assertEquals(listOf("3"),fewer[0].children.map { it.id })
+        assertTrue(removeActions(p.actions,allActionIds(p.actions)).isEmpty())
+        val noA=p.withoutTemplates(setOf("a"))
+        assertEquals(listOf("b"),noA.templates.map { it.id })
+        assertEquals("",noA.actions[0].templateId); assertEquals("b",noA.actions[1].children[0].templateId)
+        assertFalse(noA.startOnImage); assertNull(noA.template)
+        assertNull(noA.validate())
+    }
+
+    /** Imagen guardada como «ancho, alto y bytes RGB» comprimidos (aquí no hay lector de PNG). */
+    private fun png(name: String): es.macrostudio.vision.Pixels {
+        val input=java.io.DataInputStream(java.util.zip.GZIPInputStream(javaClass.classLoader!!.getResourceAsStream("vision/${name.removeSuffix(".png")}.rgb.gz")))
+        val w=input.readInt(); val h=input.readInt(); val bytes=ByteArray(w*h*3); input.readFully(bytes)
+        val data=IntArray(w*h) { i -> (0xFF shl 24) or ((bytes[i*3].toInt() and 255) shl 16) or ((bytes[i*3+1].toInt() and 255) shl 8) or (bytes[i*3+2].toInt() and 255) }
+        return es.macrostudio.vision.Pixels(w,h,data)
+    }
+
+    /** Captura real de Ajustes a 1920×1080: filas casi iguales (icono + dos líneas de texto).
+     * Antes, al reducir la imagen como Android, elegía la fila de al lado con un 93 %. */
+    @Test fun findsTheRightRowAmongSimilarOnes() {
+        val screen=png("ajustes-1920x1080.png")
+        for((file,at) in listOf("fila-dispositivos.png" to (40 to 441),"fila-red.png" to (44 to 332))) {
+            val t=png(file)
+            val region=Template(file,at.first,at.second,t.width,t.height,screen.width,screen.height)
+            val m=BitmapDetector.findIn(screen,t,region,SearchMode.ANYWHERE)!!
+            assertEquals(file,at.first,m.x); assertEquals(file,at.second,m.y)
+            assertTrue(file,m.confidence>.99)
+            // Con el panel flotante tapando la esquina de arriba, igual.
+            val masked=BitmapDetector.findIn(screen.masked(listOf(es.macrostudio.vision.Area(0,40,830,170))),t,region,SearchMode.ANYWHERE)!!
+            assertEquals(file,at.second,masked.y)
+        }
+    }
+
+    @Test fun shrinkAveragesBlocks() {
+        val p=es.macrostudio.vision.Pixels(4,2,intArrayOf(0xff000000.toInt(),0xffffffff.toInt(),0xff000000.toInt(),0xff000000.toInt(),0xffffffff.toInt(),0xff000000.toInt(),0xff000000.toInt(),0xff000000.toInt()))
+        val s=es.macrostudio.vision.Matcher.shrink(p,2)
+        assertEquals(2,s.width); assertEquals(1,s.height)
+        assertEquals(127,s.colors[0] and 255); assertEquals(0,s.colors[1] and 255)
+    }
+
+    @Test fun imageFoldersAreSavedWithTheMacro() {
+        val t=Template("template-a.png",0,0,10,10,100,100)
+        val p=Project(templates=listOf(SavedTemplate(id="a",name="Botón",template=t,folder="Lobby"),SavedTemplate(id="b",name="Otro",template=t)))
+        val back=es.macrostudio.projects.ProjectStore.decode(es.macrostudio.projects.ProjectStore.encode(p))
+        assertEquals("Lobby",back.templates.first { it.id=="a" }.folder)
+        assertEquals("",back.templates.first { it.id=="b" }.folder)
+    }
+
+    @Test fun keepGoingIsSavedAndOnByDefault() {
+        val off=es.macrostudio.projects.ProjectStore.decode(es.macrostudio.projects.ProjectStore.encode(Project(repeatCount=0,keepGoing=false)))
+        assertFalse(off.keepGoing)
+        val old=org.json.JSONObject(es.macrostudio.projects.ProjectStore.encode(Project())).apply { remove("keepGoing") }
+        assertTrue(es.macrostudio.projects.ProjectStore.decode(old.toString()).keepGoing)
+    }
+
+    @Test fun numbersStepsLikeTheEditor() {
+        val inner=Action(kind=Kind.WAIT,name="b"); val no=Action(kind=Kind.WAIT,name="c")
+        val block=Action(kind=Kind.IF_IMAGE,name="si",children=listOf(Action(name="a"),inner),otherwise=listOf(no))
+        val items=listOf(Action(name="x"),block)
+        assertEquals("2",stepNumber(items,block.id)); assertEquals("2.2",stepNumber(items,inner.id)); assertEquals("2.n1",stepNumber(items,no.id))
+        assertNull(stepNumber(items,"nada"))
+    }
+
+    @Test fun addsUpHowLongTheMacroTakes() {
+        val p=Project(delayMs=500,timeoutMs=60_000,repeatCount=3,intervalMs=1000,actions=listOf(
+            Action(kind=Kind.WAIT,durationMs=2000,delayAfterMs=1000),
+            Action(kind=Kind.GESTURE,durationMs=80),
+            Action(kind=Kind.CLICK_IMAGE,durationMs=80,waitMs=10_000),
+            Action(kind=Kind.REPEAT,count=4,children=listOf(Action(kind=Kind.BACK),Action(kind=Kind.WAIT,durationMs=2000))),
+            Action(kind=Kind.WHEN_IMAGE,children=listOf(Action(kind=Kind.WAIT,durationMs=99_000)))
+        ))
+        assertEquals(Span.of(3000),stepTime(p.actions[0],p))
+        assertEquals(Span(480,10_480),stepTime(p.actions[2],p))
+        assertEquals(Span.of(10_000),stepTime(p.actions[3],p))
+        assertEquals(Span.ZERO,stepTime(p.actions[4],p))
+        assertEquals(Span(500+3000+80+480+10_000,500+3000+80+10_480+10_000),roundTime(p))
+        assertEquals("5 min 32 s",durationText(332_000)); assertEquals("0,5 s",durationText(500)); assertEquals("1 h 05 min",durationText(3_900_000))
+        assertTrue(totalText(p).contains("Total 3 vueltas"))
+    }
+
+    @Test fun imagesFitOtherScreenSizesOfTheSameShape() {
+        assertTrue(BitmapDetector.sameShape(1920,1080,1280,720))
+        assertTrue(BitmapDetector.sameShape(540,1200,1080,2400))
+        assertFalse(BitmapDetector.sameShape(1920,1080,1080,1920))
+        assertFalse(BitmapDetector.sameShape(1920,1080,1440,1080))
+    }
+
+    @Test fun quickMacroIsValidAndLooksLikeTheUsualLoop() {
+        val p=QuickMacro.build(Project(name="x"),"Zooba",byIcon=true,playMs=15_000,everyMs=240_000,popups=true)
+        assertNull(p.validate())
+        assertEquals("Zooba en bucle",p.name)
+        assertEquals(listOf(Kind.WHEN_IMAGE,Kind.CLICK_IMAGE,Kind.WAIT_IMAGE,Kind.CLICK_IMAGE,Kind.WAIT,Kind.CLOSE_ACTIVE,Kind.WAIT),p.actions.map { it.kind })
+        assertEquals(0,p.repeatCount); assertTrue(p.keepGoing); assertEquals(0,p.maxMinutes)
+        assertEquals(240_000L,p.actions.last().durationMs); assertEquals(0L,p.intervalMs)
+        // Sin imágenes todavía: lo dice y se puede arreglar desde el editor.
+        assertTrue(p.executionIssues().any { it.contains("necesita una captura") })
+        // Más de 10 min: el resto pasa a pausa entre vueltas.
+        val long=QuickMacro.build(Project(name="x"),"Mi juego",byIcon=false,playMs=60_000,everyMs=30*60_000L,popups=false)
+        assertNull(long.validate())
+        assertEquals(600_000L,long.actions.last().durationMs); assertEquals(20*60_000L,long.intervalMs)
+        assertTrue(long.executionIssues().any { it.contains("elige el juego") })
+        assertEquals(QuickMacro.ZOOBA,QuickMacro.build(Project(name="x"),"zooba",false,15_000,60_000,false).actions[0].packageName)
+    }
+
+    @Test fun timesCanBeWrittenInMinutes() {
+        assertEquals(240_000L,es.macrostudio.ui.parseSeconds("4 min"))
+        assertEquals(240_000L,es.macrostudio.ui.parseSeconds("4m"))
+        assertEquals(1_500L,es.macrostudio.ui.parseSeconds("1,5"))
+        assertEquals(30_000L,es.macrostudio.ui.parseSeconds("30 s"))
+        assertNull(es.macrostudio.ui.parseSeconds("abc"))
+        assertEquals("4 min",es.macrostudio.ui.secondsText(240_000))
+        assertEquals("90",es.macrostudio.ui.secondsText(90_000))
+        assertEquals("0,5",es.macrostudio.ui.secondsText(500))
+    }
+
+    @Test fun changingATimeAlsoChangesItInTheNameAndNote() {
+        fun r(t: String, old: Long, new: Long) = TimeInText.retime(t, listOf(old to new))
+        assertEquals("5. Jugando (20 s)", r("5. Jugando (15 s)", 15_000, 20_000))
+        assertEquals("Deja 20 s para que empiece la partida.", r("Deja 15 s para que empiece la partida.", 15_000, 20_000))
+        assertEquals("7. Esperar 5 minutos", r("7. Esperar 4 minutos", 240_000, 300_000))
+        assertEquals("Esperar 1 minuto", r("Esperar 4 minutos", 240_000, 60_000))
+        assertEquals("Esperar 90 segundos", r("Esperar 4 minutos", 240_000, 90_000))
+        assertEquals("Esperar 1 segundo", r("Esperar 2,5 segundos", 2_500, 1_000))
+        assertEquals("Esperar 3,5 segundos", r("Esperar 2 segundos", 2_000, 3_500))
+        assertEquals("(máximo 1 min)", r("(máximo 90 s)", 90_000, 60_000))
+        assertEquals("cada 6 min", r("cada 5 min", 300_000, 360_000))
+        assertEquals("cerrar a los 15 segundos", r("cerrar a los 10 segundos", 10_000, 15_000))
+        assertEquals("Esperar 30s", r("Esperar 15s", 15_000, 30_000))
+        // Lo que no es ese tiempo no se toca: el número del paso, otros tiempos, «5 sobres».
+        assertEquals("3. Cobrar 20 s y 5 sobres", r("3. Cobrar 15 s y 5 sobres", 15_000, 20_000))
+        assertEquals("Esperar 10 s", r("Esperar 10 s", 15_000, 20_000))
+        // Dos cambios a la vez no se pisan (15→20 y 20→25).
+        assertEquals("20 s y 25 s", TimeInText.retime("15 s y 20 s", listOf(15_000L to 20_000L, 20_000L to 25_000L)))
+        val old = Action(kind = Kind.WAIT, name = "Jugando (15 s)", durationMs = 15_000)
+        assertEquals(listOf(15_000L to 20_000L), timeChanges(old, old.copy(durationMs = 20_000), 10_000))
+        assertEquals(listOf(15_000L, 3_000L), TimeInText.find("15 s y 3 segundos"))
+    }
+
+    @Test fun changingWhatAStepDoesKeepsTheImageAndWhereItTaps() {
+        // «Tocar» desplazado de una imagen, con nombre puesto a mano y una nota.
+        val tap = Action(kind = Kind.CLICK_IMAGE, name = "4. Pulsar BATALLA", description = "Manda a jugar", templateId = "img",
+            clickTarget = ClickTarget.OFFSET, clickOffsetX = 30f, clickOffsetY = -20f, waitMs = 20_000, delayAfterMs = 2_000)
+        fun change(a: Action, o: es.macrostudio.ui.ImageOrder) = es.macrostudio.ui.changeOrder(a, o, "Botón BATALLA", 60_000)
+
+        val always = change(tap, es.macrostudio.ui.ImageOrder.ALWAYS)
+        assertEquals(Kind.WHEN_IMAGE, always.kind)
+        assertEquals("4. Pulsar BATALLA", always.name); assertEquals("Manda a jugar", always.description)
+        assertEquals(1, always.children.size)
+        val inner = always.children[0]
+        assertEquals("img", inner.templateId); assertEquals(ClickTarget.OFFSET, inner.clickTarget)
+        assertEquals(30f, inner.clickOffsetX); assertEquals(-20f, inner.clickOffsetY)
+        assertTrue(es.macrostudio.ui.isSimpleRule(always))
+
+        // Y de vuelta a «Tocarla»: el mismo sitio.
+        val back = change(always, es.macrostudio.ui.ImageOrder.TAP)
+        assertEquals(Kind.CLICK_IMAGE, back.kind); assertEquals("img", back.templateId)
+        assertEquals(ClickTarget.OFFSET, back.clickTarget); assertEquals(30f, back.clickOffsetX); assertTrue(back.children.isEmpty())
+
+        // Esperar y volver: no pierde el sitio ni el tiempo de búsqueda.
+        val wait = change(tap, es.macrostudio.ui.ImageOrder.WAIT)
+        assertEquals(Kind.WAIT_IMAGE, wait.kind); assertEquals(20_000L, wait.durationMs)
+        val tapAgain = change(wait, es.macrostudio.ui.ImageOrder.TAP)
+        assertEquals(ClickTarget.OFFSET, tapAgain.clickTarget); assertEquals(20_000L, tapAgain.waitMs); assertEquals(80L, tapAgain.durationMs)
+
+        // Mantener pulsada y doble toque.
+        assertEquals(ClickStyle.LONG, change(tap, es.macrostudio.ui.ImageOrder.HOLD).clickStyle); assertTrue(change(tap, es.macrostudio.ui.ImageOrder.HOLD).durationMs >= 500)
+        assertEquals(ClickStyle.DOUBLE, change(tap, es.macrostudio.ui.ImageOrder.DOUBLE).clickStyle); assertEquals(80L, change(change(tap, es.macrostudio.ui.ImageOrder.HOLD), es.macrostudio.ui.ImageOrder.TAP).durationMs)
+
+        // «Si sale…»: dentro, tocarla en el mismo sitio.
+        val ifSeen = change(tap, es.macrostudio.ui.ImageOrder.IF)
+        assertEquals(Kind.IF_IMAGE, ifSeen.kind); assertEquals(ClickTarget.OFFSET, ifSeen.children.single().clickTarget)
+
+        // Nombre automático: cambia con la orden.
+        val auto = tap.copy(name = "Tocar «Botón BATALLA»")
+        assertEquals("Siempre que salga «Botón BATALLA»", change(auto, es.macrostudio.ui.ImageOrder.ALWAYS).name)
+
+        // Un bloque con más pasos dentro no se puede convertir en «Tocarla» (se perderían).
+        val busy = always.copy(children = always.children + Action(kind = Kind.BACK, name = "Atrás"))
+        assertTrue(es.macrostudio.ui.hasInnerSteps(busy))
+        assertFalse(es.macrostudio.ui.ImageOrder.TAP in es.macrostudio.ui.possibleOrders(busy))
+        assertEquals(busy, change(busy, es.macrostudio.ui.ImageOrder.TAP))
+        assertEquals(busy.children, change(busy, es.macrostudio.ui.ImageOrder.IF).children)
+    }
+
+    @Test fun waitingUntilAnImageIsGoneIsSavedAndOldStepsStayTheSame() {
+        val gone=Action(kind=Kind.WAIT_IMAGE,name="Abrir todas las cajas",templateId="caja",durationMs=240_000,waitMs=15_000,untilGone=true)
+        val normal=Action(kind=Kind.WAIT_IMAGE,name="Esperar el lobby",templateId="lobby",durationMs=90_000)
+        val back=es.macrostudio.projects.ProjectStore.decode(es.macrostudio.projects.ProjectStore.encode(Project(actions=listOf(gone,normal),templates=listOf("caja","lobby").map { SavedTemplate(id=it,name=it,template=Template("$it.png",0,0,10,10,1920,1080)) }))).actions
+        assertTrue(back[0].untilGone); assertEquals(15_000L,back[0].waitMs)
+        assertFalse(back[1].untilGone)
+        // Cambiar lo que hace el paso lo devuelve a «esperar a que salga».
+        assertFalse(es.macrostudio.ui.changeOrder(back[0],es.macrostudio.ui.ImageOrder.TAP,"Caja",60_000).untilGone)
+    }
 }

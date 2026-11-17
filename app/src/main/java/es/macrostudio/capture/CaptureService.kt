@@ -24,6 +24,8 @@ class CaptureService: Service() {
     private var reader: ImageReader?=null
     private val thread=HandlerThread("screen-frames")
     private val lock=Any(); private var latest: Bitmap?=null; private var frameAt=0L
+    /** Momento (System.nanoTime) en que Android compuso el último fotograma guardado. */
+    @Volatile private var frameNanos=0L
     @Volatile private var w=0; @Volatile private var h=0; private var dpi=0
     @Volatile private var resizing=false
     /** Avisa de los giros de pantalla. onConfigurationChanged del servicio no siempre
@@ -58,7 +60,10 @@ class CaptureService: Service() {
                     padded.copyPixelsFromBuffer(plane.buffer)
                     val frame=Bitmap.createBitmap(padded,0,0,iw,ih)
                     if(frame!==padded) padded.recycle()
-                    synchronized(lock) { latest?.recycle(); latest=frame; frameAt=SystemClock.elapsedRealtime() }
+                    // Hora del fotograma según Android; si parece rara (algunos emuladores), la de ahora.
+                    val now=System.nanoTime()
+                    val stamp=image.timestamp.takeIf { it>0 && kotlin.math.abs(now-it)<5_000_000_000L } ?: now
+                    synchronized(lock) { latest?.recycle(); latest=frame; frameAt=SystemClock.elapsedRealtime(); frameNanos=stamp }
                 } catch(e: Exception) { Studio.log("Error de captura: ${e.message}") } finally { image.close() }
             },(180-(SystemClock.elapsedRealtime()-frameAt)).coerceAtLeast(0))
         },captureHandler)
@@ -98,10 +103,24 @@ class CaptureService: Service() {
     }
     // Static screens may not deliver a new image. Keep the latest frame until projection ends.
     fun frame(): Bitmap? = synchronized(lock) { latest?.copy(Bitmap.Config.ARGB_8888,false) }
-    fun saveScreenshot(done: (Boolean)->Unit) {
+    /** Guarda la pantalla en capture.png. Con [afterNanos] (System.nanoTime) espera a un
+     * fotograma compuesto después de ese momento: así no sale el panel flotante que se acaba
+     * de esconder (en equipos lentos la foto salía con el panel dentro). */
+    fun saveScreenshot(afterNanos: Long=0L, done: (Boolean)->Unit) {
         if(!thread.isAlive || instance!==this) { done(false); return }
         // Si la pantalla giró y aún no nos enteramos, adapta y espera un fotograma nuevo.
-        if(!matchesDisplay()) { resizeToDisplay(); main.postDelayed({ saveScreenshot(done) },600); return }
+        if(!matchesDisplay()) { resizeToDisplay(); main.postDelayed({ saveScreenshot(afterNanos,done) },600); return }
+        if(afterNanos>0L) {
+            // Con la pantalla quieta no llegan más fotogramas: tras un rato se usa el último.
+            val deadline=SystemClock.uptimeMillis()+800
+            fun attempt() {
+                val fresh=synchronized(lock) { latest!=null && frameNanos>afterNanos }
+                if(fresh || SystemClock.uptimeMillis()>=deadline) {
+                    saveScreenshot(0L,done)
+                } else main.postDelayed({ attempt() },40)
+            }
+            attempt(); return
+        }
         val posted=Handler(thread.looper).post {
             val frame=frame()
             val success=frame!=null && runCatching { AtomicScreenshot.save(File(filesDir,"capture.png"),frame); true }.getOrDefault(false)

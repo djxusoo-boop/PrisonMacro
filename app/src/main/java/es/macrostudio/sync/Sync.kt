@@ -101,19 +101,95 @@ class SyncStore(context: Context) {
             onResult("Firebase todavía no está inicializado")
             return
         }
+        // Enlace web normal (sin «Dynamic Links», que Firebase ya no ofrece): en BlueStacks
+        // se copia del correo y se pega en la app.
         val settings = ActionCodeSettings.newBuilder()
             .setUrl("https://prison-ed653.firebaseapp.com/__/auth/links")
             .setHandleCodeInApp(true)
-            .setAndroidPackageName(appContext.packageName, true, null)
             .build()
         save(snapshot.copy(email = normalized, phase = SyncPhase.WAITING_FOR_CODE, message = "Enviando enlace de acceso…"))
         auth.sendSignInLinkToEmail(normalized, settings).addOnCompleteListener { task ->
             if (task.isSuccessful) {
                 prefs.edit().putString("pendingEmail", normalized).apply()
-                save(snapshot.copy(email = normalized, phase = SyncPhase.WAITING_FOR_CODE, message = "Enlace enviado a $normalized. Ábrelo desde ese correo para conectar este dispositivo."))
+                save(snapshot.copy(email = normalized, phase = SyncPhase.WAITING_FOR_CODE, message = "Enlace enviado a $normalized. Si no lo ves en 2 minutos, mira en Spam o Promociones (lo envía noreply@prison-ed653.firebaseapp.com)."))
                 onResult(null)
             } else onResult(task.exception?.localizedMessage ?: "No se pudo enviar el enlace")
         }
+    }
+
+    /** Cuenta con correo y contraseña (como en otras apps): crear o entrar, sin enlaces. */
+    fun passwordAuth(emailText: String, password: String, create: Boolean, onResult: (String?) -> Unit) {
+        val auth = runCatching { FirebaseAuth.getInstance() }.getOrNull() ?: run { onResult("Firebase todavía no está inicializado"); return }
+        val email = runCatching { validEmail(emailText) }.getOrElse { onResult(it.message ?: "Correo no válido"); return }
+        if (password.length < 6) { onResult("La contraseña tiene que tener al menos 6 letras o números"); return }
+        save(snapshot.copy(email = email, phase = SyncPhase.WAITING_FOR_CODE, message = if (create) "Creando la cuenta…" else "Entrando…"))
+        val task = if (create) auth.createUserWithEmailAndPassword(email, password) else auth.signInWithEmailAndPassword(email, password)
+        task.addOnCompleteListener { result ->
+            if (result.isSuccessful) {
+                save(snapshot.copy(email = auth.currentUser?.email ?: email, phase = SyncPhase.CONNECTED, message = "Cuenta conectada. Sincronización privada activa."))
+                startPresence(); refreshCloudProjects(); onResult(null)
+            } else {
+                val e = result.exception
+                val friendly = when (e) {
+                    is com.google.firebase.auth.FirebaseAuthUserCollisionException -> "Ese correo ya tiene cuenta. Pulsa «Entrar» (si no recuerdas la contraseña, «¿Olvidaste la contraseña?»)."
+                    is com.google.firebase.auth.FirebaseAuthWeakPasswordException -> "Contraseña demasiado débil: usa al menos 6 letras o números."
+                    is com.google.firebase.auth.FirebaseAuthInvalidUserException -> "No hay ninguna cuenta con ese correo. Pulsa «Crear cuenta»."
+                    is com.google.firebase.auth.FirebaseAuthInvalidCredentialsException -> if (create) "Correo no válido." else "Correo o contraseña incorrectos. Si es tu primera vez, pulsa «Crear cuenta»."
+                    is com.google.firebase.FirebaseNetworkException -> "Sin internet. Comprueba la conexión."
+                    else -> e?.localizedMessage ?: "No se pudo entrar"
+                }
+                save(snapshot.copy(phase = SyncPhase.NOT_CONFIGURED, message = friendly))
+                onResult(friendly)
+            }
+        }
+    }
+
+    /** Correo para poner una contraseña nueva (se abre en el navegador; funciona en cualquier aparato). */
+    fun resetPassword(emailText: String, onResult: (String?) -> Unit) {
+        val auth = runCatching { FirebaseAuth.getInstance() }.getOrNull() ?: run { onResult("Firebase todavía no está inicializado"); return }
+        val email = runCatching { validEmail(emailText) }.getOrElse { onResult(it.message ?: "Correo no válido"); return }
+        auth.sendPasswordResetEmail(email).addOnCompleteListener { t -> onResult(if (t.isSuccessful) null else t.exception?.localizedMessage ?: "No se pudo enviar") }
+    }
+
+    /** Entra con el enlace del correo pegado a mano (en BlueStacks el enlace se abre en el
+     * navegador del ordenador, no en la app). Saca el código del enlace venga como venga
+     * (envuelto por Gmail, copiado de la barra del navegador, codificado…). */
+    fun signInWithPastedLink(emailText: String, pasted: String, onResult: (String?) -> Unit) {
+        val auth = runCatching { FirebaseAuth.getInstance() }.getOrNull() ?: run { onResult("Firebase todavía no está inicializado"); return }
+        val email = runCatching { validEmail(emailText.ifBlank { prefs.getString("pendingEmail", null).orEmpty() }) }.getOrElse { onResult("Escribe arriba el correo al que llegó el enlace"); return }
+        val code = findOobCode(pasted) ?: run { onResult("Eso no parece el enlace del correo. Copia el enlace entero (clic derecho › Copiar enlace)."); return }
+        val apiKey = runCatching { com.google.firebase.FirebaseApp.getInstance().options.apiKey }.getOrNull().orEmpty()
+        val link = "https://prison-ed653.firebaseapp.com/__/auth/action?apiKey=$apiKey&mode=signIn&oobCode=$code&lang=es"
+        save(snapshot.copy(email = email, phase = SyncPhase.WAITING_FOR_CODE, message = "Conectando…"))
+        auth.signInWithEmailLink(email, link).addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                prefs.edit().remove("pendingEmail").apply()
+                save(snapshot.copy(email = auth.currentUser?.email ?: email, phase = SyncPhase.CONNECTED, message = "Cuenta conectada. Sincronización privada activa."))
+                startPresence(); refreshCloudProjects(); onResult(null)
+            } else {
+                val raw = task.exception?.localizedMessage.orEmpty()
+                val friendly = when {
+                    raw.contains("expired", true) || raw.contains("already been used", true) || raw.contains("invalid", true) ->
+                        "Ese enlace ya no vale (caducado, usado o hay otro más nuevo). Pulsa «Volver a enviar el enlace» y pega SOLO el correo más nuevo, sin abrirlo."
+                    raw.contains("email", true) -> "El correo de arriba no es el mismo al que llegó el enlace."
+                    else -> "No se pudo conectar: $raw"
+                }
+                save(snapshot.copy(phase = SyncPhase.WAITING_FOR_CODE, message = friendly))
+                onResult(friendly)
+            }
+        }
+    }
+
+    /** Busca «oobCode=…» en el texto, deshaciendo hasta 4 capas de codificación. */
+    private fun findOobCode(text: String): String? {
+        var s = text.trim()
+        repeat(5) {
+            Regex("oobCode(?:=|%3D)([A-Za-z0-9_\\-]{10,})").find(s)?.let { return it.groupValues[1] }
+            val decoded = runCatching { java.net.URLDecoder.decode(s, "UTF-8") }.getOrDefault(s)
+            if (decoded == s) return@repeat
+            s = decoded
+        }
+        return Regex("^[A-Za-z0-9_\\-]{20,}$").find(text.trim())?.value
     }
 
     /** Completa el enlace recibido por Android App Links. */

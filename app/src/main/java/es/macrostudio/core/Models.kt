@@ -2,7 +2,9 @@ package es.macrostudio.core
 
 import java.util.UUID
 
-enum class Kind { GESTURE, WAIT, WAIT_IMAGE, REPEAT, CLICK_IMAGE, IF_IMAGE, IF_COLOR, HOME, BACK, RECENTS, CLOSE_ACTIVE, NOTIFICATIONS, QUICK_SETTINGS, OPEN_APP, STOP }
+enum class Kind { GESTURE, WAIT, WAIT_IMAGE, REPEAT, CLICK_IMAGE, IF_IMAGE, IF_COLOR, HOME, BACK, RECENTS, CLOSE_ACTIVE, NOTIFICATIONS, QUICK_SETTINGS, OPEN_APP, STOP, WHEN_IMAGE }
+/** Qué hace la macro después de una regla «⚡ Siempre que se vea». */
+enum class AfterRule { CONTINUE, SKIP_STEP, EXIT_LOOP, RESTART, STOP }
 enum class SearchMode { EXACT, ANYWHERE }
 enum class ClickTarget { CENTER, OFFSET, FIXED }
 enum class ClickStyle { SINGLE, DOUBLE, LONG }
@@ -40,12 +42,21 @@ data class Action(
     /** Buscar imagen / esperar imagen: si no aparece a tiempo, sigue con el siguiente paso en vez de parar. */
     val skipIfMissing: Boolean = false,
     /** Buscar imagen y tocarla: tiempo máximo buscando (0 = el de la macro). */
-    val waitMs: Long = 0
+    val waitMs: Long = 0,
+    /** Espera antes de hacer este paso y después de hacerlo (así no hacen falta pasos «Esperar»). */
+    val delayBeforeMs: Long = 0,
+    val delayAfterMs: Long = 0,
+    /** «⚡ Siempre que se vea»: qué hacer al terminar sus pasos (waitMs = descanso antes de poder volver a actuar). */
+    val afterRule: AfterRule = AfterRule.CONTINUE,
+    /** «Esperar a que salga una imagen» al revés: espera a que YA NO se vea (waitMs seguidos sin verla;
+     * p. ej. «hasta que no quede ninguna caja por abrir»). Mientras, las reglas ⚡ siguen actuando. */
+    val untilGone: Boolean = false
 ) {
     fun duplicate(): Action = copy(id = UUID.randomUUID().toString(), children = children.map { it.duplicate() }, otherwise = otherwise.map { it.duplicate() })
 }
 data class Template(val file: String, val x: Int, val y: Int, val width: Int, val height: Int, val screenWidth: Int, val screenHeight: Int)
-data class SavedTemplate(val id: String = UUID.randomUUID().toString(), val name: String = "Nueva captura", val template: Template)
+/** [folder]: carpeta donde la guarda el usuario para ordenarlas ("" = sin carpeta). */
+data class SavedTemplate(val id: String = UUID.randomUUID().toString(), val name: String = "Nueva captura", val template: Template, val folder: String = "")
 data class Project(
     val id: String = UUID.randomUUID().toString(),
     val name: String = "Mi secuencia",
@@ -62,6 +73,9 @@ data class Project(
     val maxMinutes: Int = 30,
     /** true: la macro espera a ver [template] antes de cada repetición. */
     val startOnImage: Boolean = false,
+    /** Sin fin: si un paso falla (no aparece una imagen, la captura se corta…), se apunta y la
+     * vuelta empieza otra vez en vez de parar la macro. */
+    val keepGoing: Boolean = true,
     val templates: List<SavedTemplate> = emptyList(),
     val actions: List<Action> = emptyList()
 ) {
@@ -79,7 +93,7 @@ data class Project(
         var total = 0
         val ids=HashSet<String>()
         fun check(items: List<Action>, depth: Int): Boolean = depth <= 8 && items.all { a ->
-            ++total <= 500 && ids.add(a.id) && a.id.isNotBlank() && a.name.length <= 100 && a.description.length <= 500 && a.durationMs in 1..600_000 && (a.kind!=Kind.WAIT_IMAGE || a.durationMs in 1_000..600_000) && a.count in 1..100 && a.waitMs in 0..3_600_000 &&
+            ++total <= 500 && ids.add(a.id) && a.id.isNotBlank() && a.name.length <= 100 && a.description.length <= 500 && a.durationMs in 1..600_000 && (a.kind!=Kind.WAIT_IMAGE || a.durationMs in 1_000..600_000) && a.count in 1..100 && a.waitMs in 0..3_600_000 && a.delayBeforeMs in 0..3_600_000 && a.delayAfterMs in 0..3_600_000 &&
                 (a.kind!=Kind.CLOSE_ACTIVE || a.durationMs in 500..3_000) &&
                 (a.kind!=Kind.OPEN_APP || (a.packageName.length<=255 && a.packageName.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")))) &&
                 (a.kind!=Kind.CLICK_IMAGE || (a.clickOffsetX.isFinite() && a.clickOffsetY.isFinite() &&
@@ -107,8 +121,14 @@ data class Project(
         val templateIds=templates.map { it.id }.toSet()
         fun check(items: List<Action>) {
             items.filter { it.enabled }.forEach { action ->
-                if(action.kind in setOf(Kind.IF_IMAGE,Kind.CLICK_IMAGE,Kind.WAIT_IMAGE) && action.templateId !in templateIds) {
+                if(action.kind in setOf(Kind.IF_IMAGE,Kind.CLICK_IMAGE,Kind.WAIT_IMAGE,Kind.WHEN_IMAGE) && action.templateId !in templateIds) {
                     issues += "«${action.name.ifBlank { kindLabelForIssue(action.kind) }}» necesita una captura"
+                }
+                if(action.kind==Kind.WHEN_IMAGE && action.children.none { it.enabled }) {
+                    issues += "«${action.name.ifBlank { "Siempre que se vea" }}» todavía no toca nada"
+                }
+                if(action.kind==Kind.OPEN_APP && action.packageName==QuickMacro.NO_APP) {
+                    issues += "«${action.name.ifBlank { "Abrir un juego" }}»: elige el juego"
                 }
                 if(action.kind==Kind.REPEAT && action.children.none { it.enabled }) {
                     issues += "«${action.name.ifBlank { "Repetir pasos" }}» no contiene pasos activos"
@@ -127,6 +147,7 @@ private fun kindLabelForIssue(kind: Kind): String = when(kind) {
     Kind.IF_IMAGE -> "SI SE VE UNA IMAGEN"
     Kind.CLICK_IMAGE -> "Detectar imagen y hacer clic"
     Kind.WAIT_IMAGE -> "Esperar hasta ver una imagen"
+    Kind.WHEN_IMAGE -> "Siempre que se vea una imagen"
     else -> kind.name
 }
 
@@ -163,7 +184,7 @@ fun countActions(items: List<Action>): Int = items.sumOf { 1+countActions(it.chi
 
 /** Pasos que necesitan la captura de pantalla autorizada para funcionar. */
 fun Project.needsScreenCapture(): Boolean {
-    fun scan(items: List<Action>): Boolean = items.any { (it.enabled && (it.kind in setOf(Kind.IF_IMAGE,Kind.CLICK_IMAGE,Kind.WAIT_IMAGE,Kind.IF_COLOR) || (it.kind==Kind.REPEAT && it.templateId.isNotEmpty()))) || scan(it.children) || scan(it.otherwise) }
+    fun scan(items: List<Action>): Boolean = items.any { (it.enabled && (it.kind in setOf(Kind.IF_IMAGE,Kind.CLICK_IMAGE,Kind.WAIT_IMAGE,Kind.IF_COLOR,Kind.WHEN_IMAGE) || (it.kind==Kind.REPEAT && it.templateId.isNotEmpty()))) || scan(it.children) || scan(it.otherwise) }
     return startOnImage || scan(actions)
 }
 
@@ -202,3 +223,86 @@ fun duplicateAfter(items: List<Action>, id: String): List<Action> {
 /** Paso al que hay que volver tras una captura pedida para [target]
  * (un paso, "color:" + paso, o la imagen de inicio, que no es un paso). */
 fun stepOfCaptureTarget(target: String?): String? = target?.removePrefix("color:")?.takeIf { it != "__inicio__" }
+
+/** El bloque («Si se ve…» o «Repetir») que contiene el paso, o null si está en la lista principal. */
+fun parentOf(items: List<Action>, id: String): Action? {
+    items.forEach { a ->
+        if (a.children.any { it.id == id } || a.otherwise.any { it.id == id }) return a
+        parentOf(a.children, id)?.let { return it }
+        parentOf(a.otherwise, id)?.let { return it }
+    }
+    return null
+}
+
+/** Saca el paso de su bloque y lo deja justo después del bloque. */
+fun moveOutOfBlock(items: List<Action>, id: String): List<Action> {
+    val parent = parentOf(items, id) ?: return items
+    val action = findAction(items, id) ?: return items
+    return insertAfter(updateAction(items, id) { null }, parent.id, action)
+}
+
+/** Añade el paso al final de un bloque. */
+fun addInside(items: List<Action>, parentId: String, otherwise: Boolean, action: Action): List<Action> =
+    updateAction(items, parentId) { if (otherwise) it.copy(otherwise = it.otherwise + action) else it.copy(children = it.children + action) }
+
+/** ¿Es el primero / el último de su lista? */
+fun siblingPosition(items: List<Action>, id: String): Pair<Boolean, Boolean>? {
+    val index = items.indexOfFirst { it.id == id }
+    if (index >= 0) return (index == 0) to (index == items.lastIndex)
+    items.forEach { a -> (siblingPosition(a.children, id) ?: siblingPosition(a.otherwise, id))?.let { return it } }
+    return null
+}
+
+/** La lista (el bloque) donde está el paso [id], o null si no está. */
+fun siblingsOf(items: List<Action>, id: String): List<Action>? {
+    if (items.any { it.id == id }) return items
+    items.forEach { a -> (siblingsOf(a.children, id) ?: siblingsOf(a.otherwise, id))?.let { return it } }
+    return null
+}
+
+/** El paso de al lado (abajo si [down], si no arriba) en el mismo bloque, o null si no hay. */
+fun siblingNeighbor(items: List<Action>, id: String, down: Boolean): String? {
+    val list = siblingsOf(items, id) ?: return null
+    return list.getOrNull(list.indexOfFirst { it.id == id } + if (down) 1 else -1)?.id
+}
+
+/** Ids de todos los bloques (para plegar todo). */
+fun containerIds(items: List<Action>): Set<String> = items.flatMap { a ->
+    (if (a.kind == Kind.REPEAT || a.kind == Kind.IF_IMAGE || a.kind == Kind.IF_COLOR || a.kind == Kind.WHEN_IMAGE) listOf(a.id) else emptyList()) + containerIds(a.children) + containerIds(a.otherwise)
+}.toSet()
+
+/** Número del paso como en el editor: «3», «3.2» o «3.n1» (dentro de «✖ Si NO se ve»). */
+fun stepNumber(items: List<Action>, id: String, prefix: String = ""): String? {
+    items.forEachIndexed { i, a ->
+        val n = "$prefix${i + 1}"
+        if (a.id == id) return n
+        stepNumber(a.children, id, "$n.")?.let { return it }
+        stepNumber(a.otherwise, id, "$n.n")?.let { return it }
+    }
+    return null
+}
+
+/** Todas las reglas «⚡ Siempre que se vea» activas, estén donde estén. */
+fun ruleActions(items: List<Action>): List<Action> = items.filter { it.enabled }.flatMap { a ->
+    (if (a.kind == Kind.WHEN_IMAGE) listOf(a) else emptyList()) + ruleActions(a.children) + ruleActions(a.otherwise)
+}
+
+/** Quita los pasos [ids] (con lo que tengan dentro). */
+fun removeActions(items: List<Action>, ids: Set<String>): List<Action> = items.filter { it.id !in ids }.map { a ->
+    a.copy(children = removeActions(a.children, ids), otherwise = removeActions(a.otherwise, ids))
+}
+
+/** Todos los ids de pasos, también los de dentro de los bloques. */
+fun allActionIds(items: List<Action>): Set<String> = items.flatMap { listOf(it.id) + allActionIds(it.children) + allActionIds(it.otherwise) }.toSet()
+
+/** Los pasos que usaban alguna de las imágenes [templateIds] se quedan sin imagen. */
+fun clearTemplateRefs(items: List<Action>, templateIds: Set<String>): List<Action> = items.map { a ->
+    a.copy(templateId = if (a.templateId in templateIds) "" else a.templateId, children = clearTemplateRefs(a.children, templateIds), otherwise = clearTemplateRefs(a.otherwise, templateIds))
+}
+
+/** Quita imágenes de la macro aunque estén en uso (los pasos que las usaban se quedan sin imagen). */
+fun Project.withoutTemplates(templateIds: Set<String>): Project {
+    val removedFiles = templates.filter { it.id in templateIds }.map { it.template.file }.toSet()
+    val keepStart = template?.takeIf { it.file !in removedFiles }
+    return copy(templates = templates.filterNot { it.id in templateIds }, actions = clearTemplateRefs(actions, templateIds), template = keepStart, startOnImage = startOnImage && keepStart != null)
+}

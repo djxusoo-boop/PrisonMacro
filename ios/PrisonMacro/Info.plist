@@ -14,6 +14,36 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Macro de PrisonMacro</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.json</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_prisonmacro._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>PrisonMacro busca tu ordenador en la wifi para pasar macros entre el iPhone y Android.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Para elegir capturas de pantalla del juego y recortarlas.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

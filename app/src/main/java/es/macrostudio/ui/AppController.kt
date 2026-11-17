@@ -38,12 +38,34 @@ sealed interface AppDialog {
  * flotante, captura, archivos) pasan por aquí, para que cualquier botón haga
  * exactamente lo mismo.
  */
-class AppController(val activity: ComponentActivity, private val scope: CoroutineScope) {
-    var screen by mutableStateOf(Screen.HOME)
+class AppController(val activity: ComponentActivity, val scope: CoroutineScope) {
+    var screen by mutableStateOf(runCatching { Screen.valueOf(Studio.lastScreen) }.getOrDefault(Screen.HOME).let { if (it == Screen.LOG || it == Screen.CLOUD) Screen.HOME else it })
     /** Paso abierto en el editor de pasos. */
     var editingId by mutableStateOf<String?>(null)
     /** Paso recién creado: si se cancela su edición, se elimina. */
-    var draftId by mutableStateOf<String?>(null)
+    private var draftState by mutableStateOf<String?>(null)
+    var draftId: String?
+        get() = draftState
+        set(value) {
+            draftState = value
+            // Se apunta también fuera de la memoria: si la app se cierra con el paso a medias, al volver se quita.
+            activity.getSharedPreferences("studio", 0).edit().putString("draft", value?.let { "${Studio.project.id}/$it" } ?: "").apply()
+        }
+
+    /** Quita el paso nuevo que quedó a medias si la app se cerró mientras se editaba. */
+    fun dropLeftoverDraft() {
+        val prefs = activity.getSharedPreferences("studio", 0)
+        val saved = prefs.getString("draft", "").orEmpty()
+        if (saved.isBlank() || draftState != null) return
+        prefs.edit().putString("draft", "").apply()
+        val (projectId, stepId) = saved.split("/", limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] } ?: return
+        val p = Studio.projects.firstOrNull { it.id == projectId } ?: return
+        if (findAction(p.actions, stepId) == null) return
+        val cleaned = p.copy(actions = updateAction(p.actions, stepId) { null })
+        if (p.id == Studio.project.id) Studio.update(cleaned, history = false)
+        else runCatching { Studio.saveAll(listOf(cleaned)) }
+        Studio.log("Quitado un paso nuevo que quedó a medias")
+    }
     var dialog by mutableStateOf<AppDialog?>(null)
 
     internal var afterCapturePermission: (() -> Unit)? = null
@@ -58,7 +80,7 @@ class AppController(val activity: ComponentActivity, private val scope: Coroutin
     fun toast(text: String) = Toast.makeText(activity, text, Toast.LENGTH_LONG).show()
 
     var previous: Screen = Screen.HOME; private set
-    fun open(screen: Screen) { if (screen != this.screen) previous = this.screen; this.screen = screen }
+    fun open(screen: Screen) { if (screen != this.screen) previous = this.screen; this.screen = screen; Studio.lastScreen = screen.name }
 
     fun openEditor(p: Project) { if (p.id != Studio.project.id) Studio.switch(p); open(Screen.EDITOR) }
 
@@ -94,6 +116,17 @@ class AppController(val activity: ComponentActivity, private val scope: Coroutin
         withCapture { s.startCaptureMode(target); activity.moveTaskToBack(true) }
     }
 
+    /** Panel en modo «capturas rápidas»: varias fotos del juego seguidas. */
+    fun startBurst() {
+        val s = accessibility() ?: return
+        withCapture { s.startBurstMode(); activity.moveTaskToBack(true) }
+    }
+
+    /** Recorta una captura guardada (sin volver al juego). La imagen va a [target]. */
+    fun cropShot(file: java.io.File, target: String?) {
+        activity.startActivity(Intent(activity, CropActivity::class.java).putExtra("shotFile", es.macrostudio.capture.Shots.relative(file)).putExtra("actionId", target))
+    }
+
     fun importImageFor(target: String?) {
         pickImageTarget = target
         pickImageLauncher.launch(arrayOf("image/*"))
@@ -110,16 +143,24 @@ class AppController(val activity: ComponentActivity, private val scope: Coroutin
         if (issues.isNotEmpty()) { dialog = AppDialog.Issues(Studio.project, issues); return }
         val s = accessibility() ?: return
         val go = {
-            s.showBar(); activity.moveTaskToBack(true)
-            toast("Abre tu app o juego y pulsa ▶ en el panel flotante")
+            s.showBar("👉 Abre tu juego y pulsa ▶"); activity.moveTaskToBack(true); Unit
         }
         if (Studio.project.needsScreenCapture()) withCapture(go) else go()
     }
 
     fun record() {
         val s = accessibility() ?: return
-        s.showBar(); activity.moveTaskToBack(true)
-        toast("Abre tu app y pulsa ● en el panel para grabar. Pulsa ■ para terminar.")
+        Studio.recordInto = null
+        s.showBar("👉 Abre tu juego y pulsa ● para grabar tus toques"); activity.moveTaskToBack(true)
+    }
+
+    /** Graba toques DENTRO de un bloque (p. ej. lo que hay que hacer cuando se ve una imagen). */
+    fun recordInto(parentId: String, otherwise: Boolean = false) {
+        val s = accessibility() ?: return
+        val block = findAction(Studio.project.actions, parentId) ?: return
+        Studio.recordInto = parentId to otherwise
+        Studio.collapsed = Studio.collapsed - parentId
+        s.showBar("👉 Ve al juego y pulsa ● (se guarda dentro de «${block.name}»)"); activity.moveTaskToBack(true)
     }
 
     /** Ejecuta solo este paso sobre la app que haya debajo. */
@@ -135,6 +176,12 @@ class AppController(val activity: ComponentActivity, private val scope: Coroutin
     fun testImage(templateId: String) = withCapture {
         Engine.testImage(templateId); activity.moveTaskToBack(true)
         toast("Ve a la pantalla: se comprobará en 2,5 s")
+    }
+
+    /** PC Windows: abre Recientes para tocar encima de «Cerrar todo» y guardar dónde está. */
+    fun markClearAll() {
+        val s = accessibility() ?: return
+        s.startClearAllPicker()
     }
 
     fun pickPoint(actionId: String, swipe: Boolean = false) {
@@ -195,9 +242,24 @@ class AppController(val activity: ComponentActivity, private val scope: Coroutin
             runCatching { withContext(Dispatchers.IO) { Backup.read(activity, bytes, keepIds = false) } }
                 .mapCatching { list -> Studio.saveAll(list); list }
                 .onSuccess { list ->
-                    list.firstOrNull()?.let { Studio.switch(Studio.projects.firstOrNull { p -> p.id == it.id } ?: it); screen = Screen.EDITOR }
+                    list.firstOrNull()?.let { Studio.switch(Studio.projects.firstOrNull { p -> p.id == it.id } ?: it); open(Screen.EDITOR) }
                     Studio.log("Macro importada desde $source"); toast("Macro importada: ${list.firstOrNull()?.name}")
                 }.onFailure { Studio.fail("Importación rechazada: ${it.message}") }
+        }
+    }
+
+    /** Macros del buzón del ordenador: si ya existe una con el mismo id, se actualiza; si no, se añade. */
+    fun receiveMacros(bytes: ByteArray, source: String = "del ordenador") {
+        val before = Studio.projects.map { it.id }.toSet()
+        scope.launch {
+            runCatching { withContext(Dispatchers.IO) { Backup.read(activity, bytes, keepIds = true) } }
+                .mapCatching { list -> Studio.saveAll(list); list }
+                .onSuccess { list ->
+                    list.firstOrNull()?.let { Studio.switch(Studio.projects.firstOrNull { p -> p.id == it.id } ?: it); open(Screen.EDITOR) }
+                    val updated = list.count { r -> before.contains(r.id) }
+                    val text = (if (list.size == 1) "Macro ${if (updated == 1) "actualizada" else "recibida"}: ${list.first().name}" else "Recibidas ${list.size} macros" + if (updated > 0) " ($updated actualizadas)" else "")
+                    Studio.log("$text ($source)"); toast(text)
+                }.onFailure { Studio.fail("No se pudieron recibir: ${it.message}") }
         }
     }
 
@@ -205,7 +267,7 @@ class AppController(val activity: ComponentActivity, private val scope: Coroutin
         scope.launch {
             runCatching { withContext(Dispatchers.IO) { Backup.read(activity, bytes, keepIds = true) } }
                 .mapCatching { list -> Studio.saveAll(list); list }
-                .onSuccess { list -> Studio.log("Copia restaurada: ${list.size} macro(s)"); toast("Copia restaurada: ${list.size} macro(s)"); screen = Screen.HOME }
+                .onSuccess { list -> Studio.log("Copia restaurada: ${list.size} macro(s)"); toast("Copia restaurada: ${list.size} macro(s)"); open(Screen.HOME) }
                 .onFailure { Studio.fail("No se pudo restaurar: ${it.message}") }
         }
     }

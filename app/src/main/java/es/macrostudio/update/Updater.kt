@@ -3,6 +3,8 @@ package es.macrostudio.update
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
@@ -31,6 +33,53 @@ import java.util.concurrent.Executors
  */
 object Updater {
     const val DEFAULT_PORT = 8765
+
+    /** Actualización encontrada al abrir la app (o al pulsar ⬆), para el aviso de la pantalla principal. */
+    var available by androidx.compose.runtime.mutableStateOf<Info?>(null)
+    var availableAt by androidx.compose.runtime.mutableStateOf("")
+    var message by androidx.compose.runtime.mutableStateOf("")
+    var busy by androidx.compose.runtime.mutableStateOf(false)
+    private var checkedOnStart = false
+
+    /** Al abrir la app: mira en silencio si el ordenador tiene una versión más nueva. */
+    fun checkOnStart(context: Context) {
+        if (checkedOnStart) return
+        checkedOnStart = true
+        Finder.quick(context) { address -> if (address != null) check(address) { info, _ -> if (info != null && isNewer(info)) { available = info; availableAt = address } } }
+    }
+
+    /** Botón ⬆: busca el ordenador (aunque haya cambiado de IP) y la versión. */
+    fun checkNow(context: Context, done: (String) -> Unit) {
+        busy = true; message = "Buscando el ordenador…"
+        Finder.ensure(context, progress = { message = it }) { address ->
+            if (address == null) { busy = false; message = ""; done("No encuentro el ordenador. Comprueba que está encendido, en la misma wifi y con el buzón abierto (icono «Abrir buzón PrisonMacro» del Escritorio del Mac)."); return@ensure }
+            message = "Mirando si hay versión nueva…"
+            check(address) { info, error ->
+                busy = false; message = ""
+                when {
+                    error != null -> done(error)
+                    info != null && isNewer(info) -> { available = info; availableAt = address; done("Hay una versión nueva: ${info.versionName}") }
+                    else -> done("Ya tienes la última versión (${BuildConfig.VERSION_NAME}).")
+                }
+            }
+        }
+    }
+
+    /** «⬇ Instalar ahora» del aviso. */
+    fun installAvailable(activity: android.app.Activity, done: (String?) -> Unit) {
+        val info = available ?: return
+        if (!activity.packageManager.canRequestPackageInstalls()) {
+            done("Permite a PrisonMacro instalar apps (activa el interruptor y vuelve), y pulsa otra vez «Instalar ahora».")
+            activity.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:${activity.packageName}")))
+            return
+        }
+        busy = true; message = "Descargando ${info.versionName}…"
+        downloadAndInstall(activity, availableAt, info, progress = { message = "Descargando ${info.versionName}… $it %" }) { error ->
+            busy = false
+            message = error ?: "Descargada. Pulsa «Instalar» en el aviso de Android. Tus macros se conservan."
+            done(error)
+        }
+    }
     /** Dirección del ordenador visto desde BlueStacks en ese mismo ordenador. */
     const val SAME_COMPUTER = "10.0.2.2:$DEFAULT_PORT"
 
@@ -77,7 +126,7 @@ object Updater {
 
     private fun friendly(e: Throwable): String = when (e) {
         is java.net.ConnectException, is java.net.SocketTimeoutException, is java.net.NoRouteToHostException, is java.net.UnknownHostException ->
-            "No encuentro el ordenador. Comprueba que en él está abierto «bash scripts/serve-updates.sh» y que la dirección es la que muestra."
+            "No encuentro el ordenador. Comprueba que en él está abierto el buzón (icono «Abrir buzón PrisonMacro» del Escritorio del Mac) y que la dirección es la que muestra."
         else -> e.message ?: e.javaClass.simpleName
     }
 
@@ -92,6 +141,96 @@ object Updater {
                 } finally { c.disconnect() }
             }
             main.post { result.fold({ done(it, null) }, { done(null, friendly(it)) }) }
+        }
+    }
+
+    /** Descarga las macros que el ordenador ofrece (outputs/macros). Responde en el hilo principal. */
+    fun fetchMacros(address: String, done: (ByteArray?, String?) -> Unit) {
+        worker.execute {
+            val result = runCatching {
+                val c = open("http://$address/macros.json")
+                try {
+                    if (c.responseCode == 404) error("El ordenador no tiene ninguna macro preparada para enviar.")
+                    if (c.responseCode != 200) error("El ordenador respondió ${c.responseCode}")
+                    c.inputStream.use { input ->
+                        val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
+                        while (true) { val read = input.read(buffer); if (read < 0) break; require(out.size() + read <= es.macrostudio.projects.Backup.MAX_BYTES) { "Archivo demasiado grande" }; out.write(buffer, 0, read) }
+                        out.toByteArray()
+                    }
+                } finally { c.disconnect() }
+            }
+            main.post { result.fold({ done(it, null) }, { done(null, friendly(it)) }) }
+        }
+    }
+
+    /** Deja macros en el buzón del ordenador para que el iPhone (u otro Android) las recoja. */
+    fun sendMacros(address: String, body: ByteArray, done: (String?) -> Unit) {
+        worker.execute {
+            val error = runCatching {
+                val c = open("http://$address/macros.json").apply {
+                    requestMethod = "POST"; doOutput = true; readTimeout = 60000
+                    setRequestProperty("Content-Type", "application/json")
+                    setFixedLengthStreamingMode(body.size)
+                }
+                try {
+                    c.outputStream.use { it.write(body) }
+                    when (c.responseCode) {
+                        200 -> Unit
+                        404, 501 -> error("El ordenador tiene una versión antigua del buzón. Ciérralo y vuelve a abrirlo con el icono «Abrir buzón PrisonMacro» del Escritorio del Mac.")
+                        else -> error("El ordenador respondió ${c.responseCode}")
+                    }
+                } finally { c.disconnect() }
+            }.exceptionOrNull()
+            main.post { done(error?.let(::friendly)) }
+        }
+    }
+
+    /** Manda el registro de este aparato al buzón del ordenador (para ver qué pasó en cada BlueStacks). */
+    fun sendLog(address: String, text: String, done: (String?) -> Unit) {
+        val body = text.toByteArray(Charsets.UTF_8).let { if (it.size > 900_000) it.copyOfRange(it.size - 900_000, it.size) else it }
+        worker.execute {
+            val error = runCatching {
+                val c = open("http://$address/registro.txt").apply {
+                    requestMethod = "POST"; doOutput = true; readTimeout = 30000
+                    setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+                    setFixedLengthStreamingMode(body.size)
+                }
+                try {
+                    c.outputStream.use { it.write(body) }
+                    when (c.responseCode) {
+                        200 -> Unit
+                        404, 501 -> error("El ordenador tiene una versión antigua del buzón. Ciérralo y vuelve a abrirlo con el icono «Abrir buzón PrisonMacro» del Escritorio del Mac.")
+                        else -> error("El ordenador respondió ${c.responseCode}")
+                    }
+                } finally { c.disconnect() }
+            }.exceptionOrNull()
+            main.post { done(error?.let(::friendly)) }
+        }
+    }
+
+    /** Manda capturas enteras (📸) al buzón del ordenador, una tras otra. [done] recibe cuántas llegaron o el error. */
+    fun sendShots(address: String, files: List<java.io.File>, done: (Int, String?) -> Unit) {
+        worker.execute {
+            var sent = 0
+            val error = runCatching {
+                files.forEach { file ->
+                    val body = file.readBytes()
+                    val c = open("http://$address/captura.png").apply {
+                        requestMethod = "POST"; doOutput = true; readTimeout = 30000
+                        setRequestProperty("Content-Type", "image/png")
+                        setFixedLengthStreamingMode(body.size)
+                    }
+                    try {
+                        c.outputStream.use { it.write(body) }
+                        when (c.responseCode) {
+                            200 -> sent++
+                            404, 501 -> error("El ordenador tiene una versión antigua del buzón. Ciérralo y vuelve a abrirlo con el icono «Abrir buzón PrisonMacro» del Escritorio del Mac.")
+                            else -> error("El ordenador respondió ${c.responseCode}")
+                        }
+                    } finally { c.disconnect() }
+                }
+            }.exceptionOrNull()
+            main.post { done(sent, error?.let(::friendly)) }
         }
     }
 
