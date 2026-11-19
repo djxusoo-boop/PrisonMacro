@@ -438,6 +438,14 @@ struct ActionKindEditor: View {
         }
     }
 
+    /// Nombre de la marca del «⏱ reloj» (se guarda en la nota del paso). Vacío = «reloj».
+    @ViewBuilder private var clockNameField: some View {
+        LabeledField(title: "Nombre del reloj (vacío = «\(defaultClockName)»)") {
+            TextField(defaultClockName, text: Binding(get: { action.description }, set: { action.description = String($0.prefix(40)) })).textFieldStyle(.roundedBorder)
+        }
+        Hint("Solo hace falta si usas varios relojes: el de «Marcar» y el de «Esperar» tienen que llamarse igual.")
+    }
+
     /// Lo imprescindible de cada tipo de paso (lo demás va en «⚙ Más opciones»).
     @ViewBuilder private var essentials: some View {
             switch action.kind {
@@ -478,6 +486,14 @@ struct ActionKindEditor: View {
             case .WAIT:
                 SecondsField(title: "Tiempo (segundos, o «4 min»)", value: $action.durationMs, minimum: 1, maximum: 600_000)
                 QuickChoices(values: [1_000, 2_000, 5_000, 10_000, 30_000, 60_000, 240_000, 300_000, 600_000], selected: action.durationMs) { action.durationMs = $0 }
+            case .MARK_TIME:
+                Hint("Apunta la hora de ahora. Más adelante, «⏱ Esperar hasta X desde la marca» espera solo lo que falte hasta X. La marca sigue entre vueltas (y aunque una vuelta falle): solo se borra al parar la macro.")
+                clockNameField
+            case .WAIT_SINCE_MARK:
+                SecondsField(title: "Tiempo total desde la marca (segundos, o «6 min»)", value: $action.durationMs, minimum: 1, maximum: 3_600_000)
+                QuickChoices(values: [60_000, 120_000, 300_000, 360_000, 600_000, 900_000, 1_800_000], selected: action.durationMs) { action.durationMs = $0 }
+                Hint("Espera solo lo que falte. Si ya ha pasado, sigue enseguida; si no hay marca, no espera. Mientras, las reglas ⚡ siguen vigilando.")
+                clockNameField
             case .CLOSE_ACTIVE:
                 Hint("Abre Recientes, cierra el juego y vuelve a Inicio. En el PC con Windows pulsa «Cerrar todo» (se elige en Android: ⚙ Ajustes › 🖥 Este aparato).")
             case .STOP:
@@ -850,6 +866,8 @@ func kindLabel(_ kind: MacroKind) -> String {
     case .NOTIFICATIONS: return "Abrir notificaciones"
     case .QUICK_SETTINGS: return "Ajustes rápidos"
     case .WHEN_IMAGE: return "Tocar una imagen siempre que salga"
+    case .MARK_TIME: return "Marcar la hora"
+    case .WAIT_SINCE_MARK: return "Esperar hasta X desde la marca"
     }
 }
 
@@ -871,6 +889,7 @@ func kindEmoji(_ kind: MacroKind) -> String {
     case .NOTIFICATIONS: return "🔔"
     case .QUICK_SETTINGS: return "🎛"
     case .WHEN_IMAGE: return "⚡"
+    case .MARK_TIME, .WAIT_SINCE_MARK: return "⏱"
     }
 }
 
@@ -892,6 +911,8 @@ func kindExplanation(_ kind: MacroKind) -> String {
     case .NOTIFICATIONS: return "Baja la barra de notificaciones"
     case .QUICK_SETTINGS: return "Abre los ajustes rápidos"
     case .WHEN_IMAGE: return "Vigila toda la macro: anuncios, ventanas, la X…"
+    case .MARK_TIME: return "Pone en marcha el reloj para «Esperar hasta X desde la marca»"
+    case .WAIT_SINCE_MARK: return "Espera solo lo que falte, tarden lo que tarden los pasos de en medio"
     }
 }
 
@@ -933,6 +954,7 @@ let basicKinds: [MacroKind] = [.CLICK_IMAGE, .WHEN_IMAGE, .WAIT, .WAIT_IMAGE, .G
 
 /// El resto, plegado bajo «Más tipos de paso».
 let kindGroups: [(String, [MacroKind])] = [
+    ("Esperas con reloj", [.MARK_TIME, .WAIT_SINCE_MARK]),
     ("Decidir y repetir", [.IF_IMAGE, .IF_COLOR, .REPEAT, .STOP]),
     ("Botones de Android", [.BACK, .HOME, .RECENTS, .NOTIFICATIONS, .QUICK_SETTINGS]),
 ]
@@ -987,6 +1009,8 @@ func defaultAction(_ kind: MacroKind) -> MacroAction {
     case .REPEAT: return MacroAction(kind: kind, name: name, count: 3)
     case .OPEN_APP: return MacroAction(kind: kind, name: name, packageName: "")
     case .CLOSE_ACTIVE: return MacroAction(kind: kind, name: name, durationMs: 1000)
+    // «6 min» en el nombre: cambia solo al cambiar el tiempo.
+    case .WAIT_SINCE_MARK: return MacroAction(kind: kind, name: "Esperar hasta 6 min desde la marca", durationMs: 360_000)
     default: return MacroAction(kind: kind, name: name)
     }
 }
@@ -1025,6 +1049,8 @@ func readableActionSummary(_ action: MacroAction, image: String? = nil) -> Strin
     case .RECENTS: return "Abre las apps recientes"
     case .NOTIFICATIONS: return "Abre las notificaciones"
     case .QUICK_SETTINGS: return "Abre los ajustes rápidos"
+    case .MARK_TIME: return "Apunta la hora en «\(clockName(action))» (vale para todas las vueltas)"
+    case .WAIT_SINCE_MARK: return "Hasta \(readableDuration(action.durationMs)) desde «\(clockName(action))»: espera solo lo que falte"
     }
 }
 

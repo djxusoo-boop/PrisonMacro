@@ -32,6 +32,8 @@ object Engine {
     private var lastRuleCheck=0L
     private val loops=ArrayList<LoopFrame>()
     private var roundEnd: (()->Unit)?=null
+    // «⏱ Reloj»: horas marcadas. Siguen entre vueltas y aunque una vuelta falle; solo se borran al parar.
+    private val clock=ClockMarks()
     private var roundRestart: (()->Unit)?=null
     // «Sin fin, no parar nunca»: si algo falla, se apunta y la vuelta empieza otra vez.
     private var relaunch: ((Int)->Unit)?=null
@@ -97,7 +99,7 @@ object Engine {
     fun stop(reason: String="Detenido") {
         val wasRunning=Studio.running
         generation++; resume=null; pendingDetection=null; main.removeCallbacksAndMessages(null)
-        rules=emptyList(); cooldown.clear(); inRule=false; lastRuleCheck=0L; loops.clear(); roundEnd=null; roundRestart=null; relaunch=null
+        rules=emptyList(); cooldown.clear(); clock.clear(); inRule=false; lastRuleCheck=0L; loops.clear(); roundEnd=null; roundRestart=null; relaunch=null
         if(wasRunning) {
             // Queda dicho en qué paso estaba y por qué terminó: así se sabe qué paso para la macro.
             val where=Studio.lastStep
@@ -285,6 +287,27 @@ object Engine {
                     repeat(0)
                 }
                 Kind.STOP -> stop("Completado: parada en «${a.name}»")
+                Kind.MARK_TIME -> {
+                    val mark=ClockMarks.nameOf(a)
+                    clock.mark(mark,SystemClock.elapsedRealtime())
+                    Studio.log("⏱ Hora marcada en «$mark»")
+                    finish()
+                }
+                Kind.WAIT_SINCE_MARK -> {
+                    val mark=ClockMarks.nameOf(a)
+                    val left=clock.leftMs(mark,a.durationMs,SystemClock.elapsedRealtime())
+                    when {
+                        clock.markedAt(mark)==null -> { Studio.log("⏱ No hay marca «$mark»: no espera"); finish() }
+                        left<=0 -> { Studio.log("⏱ Ya pasaron ${durationText(a.durationMs)} desde «$mark»: sigue"); finish() }
+                        else -> {
+                            // Como «Esperar»: las reglas ⚡ siguen vigilando y el panel enseña la cuenta atrás.
+                            Studio.log("⏱ Espera ${durationText(left)} hasta ${durationText(a.durationMs)} desde «$mark»")
+                            setStatus("$round$label · faltan ${durationText(left)}")
+                            Watch.waiting("Hasta ${durationText(a.durationMs)} desde «$mark»",left)
+                            pauseFor(token,p,simulation,left,finish,finish)
+                        }
+                    }
+                }
                 Kind.WHEN_IMAGE -> finish()
                 Kind.CLICK_IMAGE -> if(simulation) later(token,a.durationMs,finish) else clickImage(a,token,p,finish)
                 Kind.IF_IMAGE -> {

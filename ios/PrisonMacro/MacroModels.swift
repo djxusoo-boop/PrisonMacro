@@ -4,6 +4,8 @@ import UniformTypeIdentifiers
 
 enum MacroKind: String, Codable, CaseIterable {
     case GESTURE, WAIT, WAIT_IMAGE, REPEAT, CLICK_IMAGE, IF_IMAGE, IF_COLOR, HOME, BACK, RECENTS, CLOSE_ACTIVE, NOTIFICATIONS, QUICK_SETTINGS, OPEN_APP, STOP, WHEN_IMAGE
+    /// «⏱ Reloj» (Android 0.9.8): marcar la hora y esperar hasta X desde la marca.
+    case MARK_TIME, WAIT_SINCE_MARK
 }
 
 /// «⚡ Siempre que se vea»: qué hace la macro después de los pasos de la regla (igual que Android).
@@ -139,7 +141,8 @@ struct MacroProject: Codable, Identifiable, Hashable {
     /// Android strips this field after decoding it and writes the images to its
     /// private template directory.
     var imagesBase64: [String: String]
-    var actions: [MacroAction]
+    /// Con «⏱ reloj» la macro se guarda como versión 5 (como Android 0.9.8); sin él, como antes.
+    var actions: [MacroAction] { didSet { schemaVersion = usesClock(actions) ? max(schemaVersion, 5) : min(schemaVersion, 4) } }
 
     init(id: String = UUID().uuidString.lowercased(), name: String = "Mi macro", template: MacroTemplate? = nil, mode: MacroSearchMode = .ANYWHERE, threshold: Double = 0.93, delayMs: Int64 = 500, intervalMs: Int64 = 0, timeoutMs: Int64 = 60_000, maxRuns: Int = 10, templates: [SavedMacroTemplate] = [], imagesBase64: [String: String] = [:], actions: [MacroAction] = [], schemaVersion: Int = 4) {
         self.schemaVersion = schemaVersion; self.id = id; self.name = name; self.template = template; self.mode = mode; self.threshold = threshold; self.delayMs = delayMs; self.intervalMs = intervalMs; self.timeoutMs = timeoutMs; self.maxRuns = maxRuns; self.templates = templates; self.imagesBase64 = imagesBase64; self.actions = actions
@@ -284,7 +287,9 @@ func stepTime(_ a: MacroAction, _ p: MacroProject) -> TimeSpan {
     case .REPEAT:
         let body = blockTime(a.children, p)
         own = a.templateId.isEmpty ? body * a.count : TimeSpan(min: searchMs, max: (body.max + searchMs) * Int64(a.count))
-    case .WHEN_IMAGE, .STOP: own = .zero
+    case .WHEN_IMAGE, .STOP, .MARK_TIME: own = .zero
+    // Espera solo lo que falte desde la marca: de nada a todo el tiempo.
+    case .WAIT_SINCE_MARK: own = TimeSpan(min: 0, max: a.durationMs)
     case .CLOSE_ACTIVE: own = .of(a.durationMs + 700)
     default: own = .of(systemMs)
     }
@@ -440,4 +445,20 @@ func timeChanges(_ old: MacroAction, _ new: MacroAction, timeoutMs: Int64) -> [(
     }
     return [(old.durationMs, new.durationMs), (old.delayAfterMs, new.delayAfterMs), (old.delayBeforeMs, new.delayBeforeMs), (search(old), search(new))]
         .filter { $0.0 != $0.1 }
+}
+
+// MARK: - ⏱ Reloj
+
+let clockKinds: Set<MacroKind> = [.MARK_TIME, .WAIT_SINCE_MARK]
+let defaultClockName = "reloj"
+
+/// El nombre de la marca va en la nota del paso (vacía = «reloj»), igual que en Android.
+func clockName(_ a: MacroAction) -> String {
+    let n = String(a.description.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40))
+    return n.isEmpty ? defaultClockName : n
+}
+
+/// ¿Usa la macro el «⏱ reloj»?
+func usesClock(_ items: [MacroAction]) -> Bool {
+    items.contains { clockKinds.contains($0.kind) || usesClock($0.children) || usesClock($0.otherwise) }
 }

@@ -586,9 +586,12 @@ struct StepSheet: View {
                                     }
                                     Toggle("Activo", isOn: action.enabled)
                                     ActionKindEditor(action: action, project: p, knownApps: knownApps(library.projects), advanced: true)
-                                    if a.kind != .STOP && a.kind != .WHEN_IMAGE && a.kind != .WAIT { StepDelaysEditor(action: action) }
-                                    LabeledField(title: "Nota (opcional)") {
-                                        TextField("Por ejemplo: «quita el anuncio»", text: action.description, axis: .vertical).textFieldStyle(.roundedBorder)
+                                    if a.kind != .STOP && a.kind != .WHEN_IMAGE && a.kind != .WAIT && a.kind != .WAIT_SINCE_MARK { StepDelaysEditor(action: action) }
+                                    // En los pasos del reloj la nota es el nombre de la marca (va arriba).
+                                    if !clockKinds.contains(a.kind) {
+                                        LabeledField(title: "Nota (opcional)") {
+                                            TextField("Por ejemplo: «quita el anuncio»", text: action.description, axis: .vertical).textFieldStyle(.roundedBorder)
+                                        }
                                     }
                                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
                                         SmallButton("⬆ Subir") { project.wrappedValue.actions = moveAction(p.actions, stepID, by: -1) }.disabled(pos?.first ?? true)
@@ -664,7 +667,7 @@ extension StepSheet {
         var a = now
         if !ch.isEmpty {
             a.name = String(TimeInText.retime(a.name, ch).prefix(100))
-            a.description = String(TimeInText.retime(a.description, ch).prefix(500))
+            if !clockKinds.contains(a.kind) { a.description = String(TimeInText.retime(a.description, ch).prefix(500)) }
             p.name = String(TimeInText.retime(p.name, ch).prefix(100))
             p.actions = updateAction(p.actions, stepID) { _ in a }
             if p != project.wrappedValue { project.wrappedValue = p }
@@ -701,8 +704,8 @@ func moreSummary(_ a: MacroAction, _ p: MacroProject) -> String {
     if a.delayBeforeMs > 0 { parts.append("espera \(readableDuration(a.delayBeforeMs)) antes") }
     if a.delayAfterMs > 0 { parts.append("espera \(readableDuration(a.delayAfterMs)) después") }
     if !a.enabled { parts.append("desactivado") }
-    if !a.description.isEmpty { parts.append("con nota") }
-    if parts.isEmpty { return (a.kind == .WAIT ? "Nombre y nota." : "Nombre, esperas y detalles.") + " No hace falta tocarlas." }
+    if !a.description.isEmpty && !clockKinds.contains(a.kind) { parts.append("con nota") }
+    if parts.isEmpty { return (a.kind == .WAIT ? "Nombre y nota." : a.kind == .WAIT_SINCE_MARK ? "El nombre del paso." : "Nombre, esperas y detalles.") + " No hace falta tocarlas." }
     return parts.joined(separator: " · ")
 }
 

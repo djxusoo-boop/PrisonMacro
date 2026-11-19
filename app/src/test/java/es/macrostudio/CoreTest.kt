@@ -520,4 +520,77 @@ class CoreTest {
         // Cambiar lo que hace el paso lo devuelve a «esperar a que salga».
         assertFalse(es.macrostudio.ui.changeOrder(back[0],es.macrostudio.ui.ImageOrder.TAP,"Caja",60_000).untilGone)
     }
+
+    // ---------- ⏱ Reloj: «Marcar la hora» y «Esperar hasta X desde la marca» ----------
+    @Test fun clockWaitWithOldMarkDoesNotWait() {
+        val clock=ClockMarks(); clock.mark("reloj",1_000)
+        // Marcada hace 7 min y hay que llegar a 6 min: ya pasó, no espera nada.
+        assertEquals(0L,clock.leftMs("reloj",360_000,1_000+420_000))
+        // Justo en el límite tampoco.
+        assertEquals(0L,clock.leftMs("reloj",360_000,1_000+360_000))
+    }
+    @Test fun clockWaitWithoutMarkDoesNotWait() {
+        val clock=ClockMarks()
+        assertNull(clock.markedAt("reloj"))
+        assertEquals(0L,clock.leftMs("reloj",360_000,50_000))
+        assertEquals(0L,ClockMarks.leftMs(null,360_000,50_000))
+        // Otra marca no cuenta.
+        clock.mark("caja",10_000)
+        assertEquals(0L,clock.leftMs("reloj",360_000,20_000))
+    }
+    @Test fun clockWaitWithRecentMarkWaitsOnlyWhatIsLeft() {
+        val clock=ClockMarks(); clock.mark("reloj",100_000)
+        // Los pasos de en medio tardaron 2 min 13 s: faltan 3 min 47 s para los 6 min.
+        assertEquals(227_000L,clock.leftMs("reloj",360_000,100_000+133_000))
+        // Recién marcada: espera todo.
+        assertEquals(360_000L,clock.leftMs("reloj",360_000,100_000))
+        // Volver a marcar pone el reloj a cero otra vez.
+        clock.mark("reloj",400_000)
+        assertEquals(300_000L,clock.leftMs("reloj",360_000,460_000))
+        // Al parar la macro se borra.
+        clock.clear(); assertEquals(0L,clock.leftMs("reloj",360_000,460_000))
+    }
+    @Test fun clockMarkNameComesFromNoteAndDefaultsToReloj() {
+        assertEquals("reloj",ClockMarks.nameOf(Action(kind=Kind.MARK_TIME)))
+        assertEquals("reloj",ClockMarks.nameOf(Action(kind=Kind.MARK_TIME,description="   ")))
+        assertEquals("Partida",ClockMarks.nameOf(Action(kind=Kind.MARK_TIME,description=" Partida ")))
+        // Mayúsculas y espacios no importan para encontrar la marca.
+        val clock=ClockMarks(); clock.mark("Partida",0)
+        assertEquals(60_000L,clock.leftMs(" partida",60_000,0))
+    }
+    @Test fun waitSinceMarkAllowsUpToOneHour() {
+        fun valid(kind: Kind,ms: Long)=Project(actions=listOf(Action(kind=kind,durationMs=ms))).validate()==null
+        assertTrue(valid(Kind.WAIT_SINCE_MARK,1))
+        assertTrue(valid(Kind.WAIT_SINCE_MARK,3_600_000))
+        assertFalse(valid(Kind.WAIT_SINCE_MARK,3_600_001))
+        assertFalse(valid(Kind.WAIT_SINCE_MARK,0))
+        // Los demás pasos siguen con su máximo de 10 min.
+        assertFalse(valid(Kind.WAIT,600_001))
+        assertTrue(valid(Kind.MARK_TIME,80))
+    }
+    @Test fun clockStepsSurviveSaveAndOldProjectsStillOpen() {
+        val store=es.macrostudio.projects.ProjectStore
+        val withClock=Project(repeatCount=0,actions=listOf(
+            Action(kind=Kind.MARK_TIME,name="Marcar la hora",description="partida"),
+            Action(kind=Kind.WAIT,durationMs=5_000),
+            Action(kind=Kind.WAIT_SINCE_MARK,name="Esperar hasta 6 min desde la marca",description="partida",durationMs=360_000)))
+        val json=store.encode(withClock)
+        assertEquals(5,org.json.JSONObject(json).getInt("schemaVersion"))
+        val back=store.decode(json)
+        assertEquals(withClock.actions,back.actions)
+        // Una macro sin reloj se sigue guardando como antes (versión 4): la abren las apps antiguas.
+        assertEquals(4,org.json.JSONObject(store.encode(Project(actions=listOf(Action(kind=Kind.WAIT,durationMs=1000))))).getInt("schemaVersion"))
+        // Y las versiones 2, 3 y 4 se siguen abriendo.
+        for(v in 2..4) {
+            val old=org.json.JSONObject(store.encode(Project(actions=listOf(Action(kind=Kind.WAIT,durationMs=1000))))).put("schemaVersion",v)
+            assertEquals(1,store.decode(old.toString()).actions.size)
+        }
+        // Una versión del futuro no.
+        assertTrue(runCatching { store.decode(org.json.JSONObject(json).put("schemaVersion",6).toString()) }.isFailure)
+    }
+    @Test fun clockTimeEstimate() {
+        val p=Project()
+        assertEquals(Span.ZERO,stepTime(Action(kind=Kind.MARK_TIME),p))
+        assertEquals(Span(0,360_000),stepTime(Action(kind=Kind.WAIT_SINCE_MARK,durationMs=360_000),p))
+    }
 }

@@ -422,7 +422,7 @@ private val LocalStepReorder = staticCompositionLocalOf<ColumnReorder?> { null }
                 ) {
                     basicKinds.forEach { kind -> item { KindTile(kind, big = true) { onChoose(kind) } } }
                     item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                        TextButton(onClick = { more = !more }) { Text(if (more) "▲ Menos tipos de paso" else "▼ Más tipos de paso (si se ve…, repetir, color, botones de Android)") }
+                        TextButton(onClick = { more = !more }) { Text(if (more) "▲ Menos tipos de paso" else "▼ Más tipos de paso (reloj, si se ve…, repetir, color, botones de Android)") }
                     }
                     if (more) kindGroups.forEach { (group, kinds) ->
                         item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) { SectionTitle(group) }

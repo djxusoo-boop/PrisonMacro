@@ -19,6 +19,6 @@ if [[ "$badging" == *"testOnly"* ]]; then
 fi
 unzip -t "$apk" >/dev/null
 mkdir -p outputs
-cp "$apk" outputs/PrisonMacro-0.9.7.apk
-shasum -a 256 outputs/PrisonMacro-0.9.7.apk
-echo "APK verificado: outputs/PrisonMacro-0.9.7.apk"
+cp "$apk" outputs/PrisonMacro-0.9.8.apk
+shasum -a 256 outputs/PrisonMacro-0.9.8.apk
+echo "APK verificado: outputs/PrisonMacro-0.9.8.apk"

@@ -2,7 +2,8 @@ package es.macrostudio.core
 
 import java.util.UUID
 
-enum class Kind { GESTURE, WAIT, WAIT_IMAGE, REPEAT, CLICK_IMAGE, IF_IMAGE, IF_COLOR, HOME, BACK, RECENTS, CLOSE_ACTIVE, NOTIFICATIONS, QUICK_SETTINGS, OPEN_APP, STOP, WHEN_IMAGE }
+/** MARK_TIME / WAIT_SINCE_MARK: el «⏱ reloj» (ver [ClockMarks]). Van al final para no cambiar el orden de los demás. */
+enum class Kind { GESTURE, WAIT, WAIT_IMAGE, REPEAT, CLICK_IMAGE, IF_IMAGE, IF_COLOR, HOME, BACK, RECENTS, CLOSE_ACTIVE, NOTIFICATIONS, QUICK_SETTINGS, OPEN_APP, STOP, WHEN_IMAGE, MARK_TIME, WAIT_SINCE_MARK }
 /** Qué hace la macro después de una regla «⚡ Siempre que se vea». */
 enum class AfterRule { CONTINUE, SKIP_STEP, EXIT_LOOP, RESTART, STOP }
 enum class SearchMode { EXACT, ANYWHERE }
@@ -93,7 +94,7 @@ data class Project(
         var total = 0
         val ids=HashSet<String>()
         fun check(items: List<Action>, depth: Int): Boolean = depth <= 8 && items.all { a ->
-            ++total <= 500 && ids.add(a.id) && a.id.isNotBlank() && a.name.length <= 100 && a.description.length <= 500 && a.durationMs in 1..600_000 && (a.kind!=Kind.WAIT_IMAGE || a.durationMs in 1_000..600_000) && a.count in 1..100 && a.waitMs in 0..3_600_000 && a.delayBeforeMs in 0..3_600_000 && a.delayAfterMs in 0..3_600_000 &&
+            ++total <= 500 && ids.add(a.id) && a.id.isNotBlank() && a.name.length <= 100 && a.description.length <= 500 && a.durationMs in 1..(if(a.kind==Kind.WAIT_SINCE_MARK) 3_600_000L else 600_000L) && (a.kind!=Kind.WAIT_IMAGE || a.durationMs in 1_000..600_000) && a.count in 1..100 && a.waitMs in 0..3_600_000 && a.delayBeforeMs in 0..3_600_000 && a.delayAfterMs in 0..3_600_000 &&
                 (a.kind!=Kind.CLOSE_ACTIVE || a.durationMs in 500..3_000) &&
                 (a.kind!=Kind.OPEN_APP || (a.packageName.length<=255 && a.packageName.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")))) &&
                 (a.kind!=Kind.CLICK_IMAGE || (a.clickOffsetX.isFinite() && a.clickOffsetY.isFinite() &&

@@ -80,6 +80,8 @@ fun kindInfo(kind: Kind): KindInfo = when (kind) {
     Kind.QUICK_SETTINGS -> KindInfo("⚙", "Ajustes rápidos", "Despliega los ajustes rápidos")
     Kind.STOP -> KindInfo("■", "Parar la macro", "Termina la macro aquí. Útil dentro de «Si se ve…»")
     Kind.WHEN_IMAGE -> KindInfo("⚡", "Tocar una imagen siempre que salga", "Vigila toda la macro: anuncios, ventanas, la X…")
+    Kind.MARK_TIME -> KindInfo("⏱", "Marcar la hora", "Pone en marcha el reloj para «Esperar hasta X desde la marca»")
+    Kind.WAIT_SINCE_MARK -> KindInfo("⏱", "Esperar hasta X desde la marca", "Espera solo lo que falte, tarden lo que tarden los pasos de en medio")
 }
 
 /** Los pasos de siempre: salen grandes en «Añadir paso». */
@@ -87,6 +89,7 @@ val basicKinds = listOf(Kind.CLICK_IMAGE, Kind.WHEN_IMAGE, Kind.WAIT, Kind.WAIT_
 
 /** El resto, plegado bajo «Más tipos de paso». */
 val kindGroups: List<Pair<String, List<Kind>>> = listOf(
+    "Esperas con reloj" to listOf(Kind.MARK_TIME, Kind.WAIT_SINCE_MARK),
     "Decidir y repetir" to listOf(Kind.IF_IMAGE, Kind.IF_COLOR, Kind.REPEAT, Kind.STOP),
     "Botones de Android" to listOf(Kind.BACK, Kind.HOME, Kind.RECENTS, Kind.NOTIFICATIONS, Kind.QUICK_SETTINGS)
 )
@@ -101,10 +104,13 @@ fun isSimpleRule(a: Action): Boolean = a.kind == Kind.WHEN_IMAGE && a.otherwise.
 val imageKinds = setOf(Kind.CLICK_IMAGE, Kind.WAIT_IMAGE, Kind.IF_IMAGE, Kind.WHEN_IMAGE)
 val containerKinds = setOf(Kind.IF_IMAGE, Kind.IF_COLOR, Kind.REPEAT, Kind.WHEN_IMAGE)
 
+val clockKinds = setOf(Kind.MARK_TIME, Kind.WAIT_SINCE_MARK)
+
 fun newAction(kind: Kind): Action = Action(
     kind = kind,
-    name = kindInfo(kind).title.removeSuffix("…"),
-    durationMs = when (kind) { Kind.WAIT -> 1000; Kind.WAIT_IMAGE -> 30_000; Kind.CLOSE_ACTIVE -> 1000; else -> 80 },
+    // «6 min» en el nombre: cambia solo al cambiar el tiempo.
+    name = if (kind == Kind.WAIT_SINCE_MARK) "Esperar hasta 6 min desde la marca" else kindInfo(kind).title.removeSuffix("…"),
+    durationMs = when (kind) { Kind.WAIT -> 1000; Kind.WAIT_IMAGE -> 30_000; Kind.CLOSE_ACTIVE -> 1000; Kind.WAIT_SINCE_MARK -> 360_000; else -> 80 },
     count = if (kind == Kind.REPEAT) 3 else 2
 )
 
@@ -226,6 +232,8 @@ fun actionSummary(a: Action, p: Project): String {
         Kind.WHEN_IMAGE -> image?.let { if (isSimpleRule(a)) "Toca «${it.name}» siempre que salga" + (if (a.afterRule != AfterRule.CONTINUE) " · después ${afterRuleLabel(a.afterRule)}" else "") else "En cuanto salga «${it.name}» · después ${afterRuleLabel(a.afterRule)}" } ?: "⚠ Falta elegir la imagen"
         Kind.IF_COLOR -> "Si se ve ${rgbHex(a.targetColor)} (tolerancia ${a.colorTolerance})"
         Kind.WAIT -> readableDuration(a.durationMs)
+        Kind.MARK_TIME -> "Apunta la hora en «${ClockMarks.nameOf(a)}» (vale para todas las vueltas)"
+        Kind.WAIT_SINCE_MARK -> "Hasta ${readableDuration(a.durationMs)} desde «${ClockMarks.nameOf(a)}»: espera solo lo que falte"
         Kind.REPEAT -> (image?.let { "Hasta ver «${it.name}» (máx. ${a.count} veces)" } ?: "${a.count} veces") + " · ${a.children.size} paso(s) dentro"
         Kind.OPEN_APP -> if (a.packageName == QuickMacro.NO_APP) "⚠ Falta elegir el juego"
             else "Abre " + runCatching { Studio.context.packageManager.let { pm -> pm.getApplicationLabel(pm.getApplicationInfo(a.packageName, 0)).toString() } }.getOrDefault(a.packageName)

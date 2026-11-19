@@ -42,6 +42,9 @@ fun stepTime(a: Action, p: Project): Span {
         }
         // Las reglas ⚡ no van en orden: solo suman cuando aparece su imagen.
         Kind.WHEN_IMAGE, Kind.STOP -> Span.ZERO
+        Kind.MARK_TIME -> Span.ZERO
+        // Espera solo lo que falte desde la marca: de nada a todo el tiempo.
+        Kind.WAIT_SINCE_MARK -> Span(0, a.durationMs)
         Kind.CLOSE_ACTIVE -> Span.of(a.durationMs + 700)
         else -> Span.of(SYSTEM_MS)
     }

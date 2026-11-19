@@ -39,7 +39,7 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
     var descAt by remember(a.id) { mutableStateOf(a) }
     var templateId by remember(a.id, a.templateId) { mutableStateOf(a.templateId) }
     // Duración: en segundos para esperas, en milisegundos para toques.
-    val durationInSeconds = a.kind in setOf(Kind.WAIT, Kind.WAIT_IMAGE, Kind.CLOSE_ACTIVE)
+    val durationInSeconds = a.kind in setOf(Kind.WAIT, Kind.WAIT_IMAGE, Kind.CLOSE_ACTIVE, Kind.WAIT_SINCE_MARK)
     var duration by remember(a.id) { mutableStateOf(if (durationInSeconds) secondsText(a.durationMs) else a.durationMs.toString()) }
     var count by remember(a.id) { mutableStateOf(a.count.toString()) }
     var x by remember(a.id, a.points) { mutableStateOf(pctText(a.points.firstOrNull()?.x ?: .5f)) }
@@ -95,6 +95,7 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
         Kind.CLICK_IMAGE -> d in 1..60_000 && (clickStyle != ClickStyle.LONG || d >= 500)
         Kind.WAIT_IMAGE -> d in 1_000..600_000
         Kind.CLOSE_ACTIVE -> d in 500..3_000
+        Kind.WAIT_SINCE_MARK -> d in 1..3_600_000
         else -> d in 1..600_000
     }
     val cnt = count.toIntOrNull()?.takeIf { it in 1..100 }
@@ -130,7 +131,8 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
         }
     )
     fun shownName() = TimeInText.retime(name, timeChanges(nameAt, timesNow, Studio.project.timeoutMs)).take(100)
-    fun shownDescription() = TimeInText.retime(description, timeChanges(descAt, timesNow, Studio.project.timeoutMs)).take(500)
+    // En los pasos del reloj la nota es el nombre de la marca: no se toca al cambiar el tiempo.
+    fun shownDescription() = if (a.kind in clockKinds) description.take(ClockMarks.MAX_NAME) else TimeInText.retime(description, timeChanges(descAt, timesNow, Studio.project.timeoutMs)).take(500)
     val problems = buildList {
         if (name.isBlank()) add("Escribe un nombre")
         if (!validDuration) add(if (durationInSeconds) "Revisa el tiempo" else "Revisa la duración")
@@ -236,7 +238,7 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
         if (a.kind == Kind.WHEN_IMAGE && afterRule != AfterRule.CONTINUE) add("después ${afterRuleLabel(afterRule)}")
         beforeMs?.takeIf { it > 0 }?.let { add("espera ${readableDuration(it)} antes") }
         afterMs?.takeIf { it > 0 }?.let { add("espera ${readableDuration(it)} después") }
-        if (description.isNotBlank()) add("con nota")
+        if (description.isNotBlank() && a.kind !in clockKinds) add("con nota")
     }
 
     Dialog(onDismissRequest = { c.closeActionEditor(discardDraft = true) }, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
@@ -289,6 +291,15 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
                             RecordInsideButton("● Grabar los toques que se repiten") { recordInside(false) }
                         }
                         Kind.WAIT -> SecondsField("Tiempo (segundos, o «4 min»)", duration, listOf("1", "2", "5", "10", "30", "60", "240", "300", "600")) { duration = it }
+                        Kind.MARK_TIME -> {
+                            Hint("Apunta la hora de ahora. Más adelante, «⏱ Esperar hasta X desde la marca» espera solo lo que falte hasta X. La marca sigue entre vueltas (y aunque una vuelta falle): solo se borra al parar la macro.")
+                            ClockNameField(description) { description = it }
+                        }
+                        Kind.WAIT_SINCE_MARK -> {
+                            SecondsField("Tiempo total desde la marca (segundos, o «6 min»)", duration, listOf("60", "120", "300", "360", "600", "900", "1800")) { duration = it }
+                            Hint("Espera solo lo que falte. Si ya ha pasado, sigue enseguida; si no hay marca, no espera. Mientras, las reglas ⚡ siguen vigilando.")
+                            ClockNameField(description) { description = it }
+                        }
                         Kind.GESTURE -> {
                             if (!recordedPath) {
                                 ChoiceChips(listOf(false to "👆 Tocar", true to "↕ Deslizar"), swipe) { swipe = it }
@@ -319,7 +330,7 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
                     // ---------- ⚙ Más opciones (plegado) ----------
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).clickable { more = !more }.padding(12.dp)) {
                         Text((if (more) "▲" else "▼") + "  ⚙ Más opciones", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                        Hint(if (moreSummary.isEmpty()) (if (a.kind == Kind.WAIT) "Nombre y nota." else "Nombre, esperas y detalles.") + " No hace falta tocarlas." else moreSummary.joinToString(" · "))
+                        Hint(if (moreSummary.isEmpty()) (when (a.kind) { Kind.WAIT -> "Nombre y nota."; Kind.WAIT_SINCE_MARK -> "El nombre del paso."; else -> "Nombre, esperas y detalles." }) + " No hace falta tocarlas." else moreSummary.joinToString(" · "))
                     }
                     if (more) {
                         OutlinedTextField(shownName(), { name = it.take(100); nameAt = timesNow }, label = { Text("Nombre del paso") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -376,12 +387,12 @@ private val packageRegex = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*
                             Kind.CLOSE_ACTIVE -> SecondsField("Espera para que se abra Recientes (0,5–3 s)", duration, listOf("0,5", "1", "2")) { duration = it }
                             else -> Unit
                         }
-                        if (a.kind != Kind.STOP && a.kind != Kind.WHEN_IMAGE && a.kind != Kind.WAIT) {
+                        if (a.kind != Kind.STOP && a.kind != Kind.WHEN_IMAGE && a.kind != Kind.WAIT && a.kind != Kind.WAIT_SINCE_MARK) {
                             SectionTitle("⏱ Esperas")
                             SecondsField("Esperar antes (segundos)", beforeSec, listOf("0", "1", "2", "5", "15", "40")) { beforeSec = it }
                             SecondsField("Esperar después (segundos, o «4 min»)", afterSec, listOf("0", "1", "2", "5", "15", "60", "300")) { afterSec = it }
                         }
-                        OutlinedTextField(shownDescription(), { description = it.take(500); descAt = timesNow }, label = { Text("Nota (opcional)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
+                        if (a.kind !in clockKinds) OutlinedTextField(shownDescription(), { description = it.take(500); descAt = timesNow }, label = { Text("Nota (opcional)") }, minLines = 2, modifier = Modifier.fillMaxWidth())
                     }
                     Spacer(Modifier.height(40.dp))
                 }
@@ -515,4 +526,11 @@ private fun pctText(v: Float): String { val n = v * 100; return if (n == n.toInt
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } }
     )
+}
+
+/** Nombre de la marca del «⏱ reloj» (se guarda en la nota del paso). Vacío = «reloj». */
+@Composable private fun ClockNameField(value: String, onChange: (String) -> Unit) {
+    OutlinedTextField(value, { onChange(it.take(ClockMarks.MAX_NAME)) }, label = { Text("Nombre del reloj (vacío = «${ClockMarks.DEFAULT_NAME}»)") },
+        placeholder = { Text(ClockMarks.DEFAULT_NAME) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    Hint("Solo hace falta si usas varios relojes: el de «Marcar» y el de «Esperar» tienen que llamarse igual.")
 }

@@ -37,7 +37,8 @@ class ProjectStore(context: Context) {
     }
     companion object {
         fun encode(p: Project): String = JSONObject().apply {
-            put("schemaVersion",4); put("id",p.id); put("name",p.name); put("mode",p.mode.name); put("threshold",p.threshold)
+            // 5 solo si usa el «⏱ reloj»: así las macros sin reloj se siguen abriendo en apps antiguas.
+            put("schemaVersion",if(p.usesClock()) 5 else 4); put("id",p.id); put("name",p.name); put("mode",p.mode.name); put("threshold",p.threshold)
             put("delayMs",p.delayMs); put("intervalMs",p.intervalMs); put("timeoutMs",p.timeoutMs); put("maxRuns",p.maxRuns); put("repeatCount",p.repeatCount); put("maxMinutes",p.maxMinutes); put("startOnImage",p.startOnImage); put("keepGoing",p.keepGoing)
             p.template?.let { put("template",JSONObject().put("file",it.file).put("x",it.x).put("y",it.y).put("width",it.width).put("height",it.height).put("screenWidth",it.screenWidth).put("screenHeight",it.screenHeight)) }
             put("templates",JSONArray().apply { p.templates.forEach { saved -> put(JSONObject().put("id",saved.id).put("name",saved.name).put("template",templateJson(saved.template)).apply { if(saved.folder.isNotBlank()) put("folder",saved.folder) }) } })
@@ -59,7 +60,7 @@ class ProjectStore(context: Context) {
         }
         fun decode(json: String): Project {
             require(json.length <= 2_000_000) { "Proyecto demasiado grande" }
-            val root=JSONObject(json); val schema=root.getInt("schemaVersion"); require(schema in 2..4) { "Versión de proyecto incompatible" }
+            val root=JSONObject(json); val schema=root.getInt("schemaVersion"); require(schema in 2..5) { "Versión de proyecto incompatible" }
             var count=0
             fun actions(array: JSONArray, depth: Int): List<Action> {
                 require(depth <= 8 && array.length() <= 500) { "Demasiadas instrucciones" }
