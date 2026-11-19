@@ -146,6 +146,8 @@ struct MacroProject: Codable, Identifiable, Hashable {
 
     init(id: String = UUID().uuidString.lowercased(), name: String = "Mi macro", template: MacroTemplate? = nil, mode: MacroSearchMode = .ANYWHERE, threshold: Double = 0.93, delayMs: Int64 = 500, intervalMs: Int64 = 0, timeoutMs: Int64 = 60_000, maxRuns: Int = 10, templates: [SavedMacroTemplate] = [], imagesBase64: [String: String] = [:], actions: [MacroAction] = [], schemaVersion: Int = 4) {
         self.schemaVersion = schemaVersion; self.id = id; self.name = name; self.template = template; self.mode = mode; self.threshold = threshold; self.delayMs = delayMs; self.intervalMs = intervalMs; self.timeoutMs = timeoutMs; self.maxRuns = maxRuns; self.templates = templates; self.imagesBase64 = imagesBase64; self.actions = actions
+        // didSet no salta en el init: una macro creada ya con «⏱ reloj» también se guarda como versión 5.
+        if usesClock(actions) { self.schemaVersion = max(schemaVersion, 5) }
     }
 
     enum CodingKeys: String, CodingKey { case schemaVersion, id, name, template, mode, threshold, delayMs, intervalMs, timeoutMs, maxRuns, repeatCount, startOnImage, maxMinutes, keepGoing, templates, imagesBase64, actions }
